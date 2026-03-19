@@ -25,8 +25,6 @@ def get_beijing_time():
     return datetime.now(BEIJING_TZ)
 
 
-TUSHARE_TOKEN = os.environ.get("TUSHARE_TOKEN", "")
-
 os.makedirs("docs", exist_ok=True)
 
 
@@ -36,7 +34,6 @@ def run_monitor():
         capture_output=True,
         text=True,
         timeout=180,
-        env={**os.environ, "TUSHARE_TOKEN": TUSHARE_TOKEN},
     )
     return result.stdout
 
