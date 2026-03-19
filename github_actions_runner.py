@@ -431,7 +431,8 @@ def generate_html(data):
         {strategies_html}
         
         <div class="footer">
-            <div>建议持仓周期: T+5 (5个交易日)</div>
+            <div><a href="strategy.html" style="color: #FFD700; text-decoration: none;">📖 查看策略说明文档</a></div>
+            <div style="margin-top: 10px;">建议持仓周期: T+5 (5个交易日)</div>
             <div style="margin-top: 8px; opacity: 0.7;">⚠️ 投资有风险，策略仅供参考</div>
         </div>
     </div>
@@ -452,8 +453,208 @@ def generate_html(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
     generate_preview_image(data)
+    generate_strategy_doc()
 
     return "docs/index.html"
+
+
+def generate_strategy_doc():
+    strategies = [
+        {
+            "id": 1,
+            "name": "RSI+布林带均值回归",
+            "color": "#3498DB",
+            "stocks": ["爱乐达", "ST炼石", "高澜股份"],
+            "win_rates": {"爱乐达": "63.16%", "ST炼石": "75.00%", "高澜股份": "57.14%"},
+            "entry": "RSI < 33 或 布林带位置 < 0.5，且当日上涨收阳",
+            "exit": "RSI > 60 或 布林带位置 > 0.75",
+            "timing": "T+1开盘买入，T+6开盘卖出",
+            "description": "利用RSI超卖和布林带下轨支撑，捕捉短期反弹机会。适合震荡市中逢低吸纳。",
+        },
+        {
+            "id": 2,
+            "name": "MA支撑+KDJ超卖",
+            "color": "#9B59B6",
+            "stocks": ["ST炼石"],
+            "win_rates": {"ST炼石": "61.90%"},
+            "entry": "股价在MA20附近(±2%)且上涨，或KDJ的J值 < 30",
+            "exit": "J值 > 80 或获利5%以上",
+            "timing": "T+1开盘买入，T+6开盘卖出",
+            "description": "结合均线支撑和KDJ超卖信号，在技术支撑位附近寻找买入机会。",
+        },
+        {
+            "id": 3,
+            "name": "多因子买入策略",
+            "color": "#E67E22",
+            "stocks": ["高澜股份", "英维克"],
+            "win_rates": {"高澜股份": "61.54%", "英维克": "58.52%"},
+            "entry": "量价配合 / 动量加速 / 放量突破 / 布林带触及 / 均线多头排列",
+            "exit": "触发任意卖出信号或持仓超过5天",
+            "timing": "T+1开盘买入，T+6开盘卖出",
+            "description": "综合多个技术指标，包括量价关系、动量、突破、布林带、均线排列等，信号越多买入概率越高。",
+        },
+        {
+            "id": 4,
+            "name": "RSI+连跌中等信号",
+            "color": "#27AE60",
+            "stocks": [
+                "裕同科技",
+                "扬农化工",
+                "华测导航",
+                "川润股份",
+                "英维克",
+                "ST炼石",
+                "高澜股份",
+            ],
+            "win_rates": {
+                "裕同科技": "77.78%",
+                "扬农化工": "88.89%",
+                "华测导航": "77.78%",
+                "川润股份": "77.78%",
+                "英维克": "66.67%",
+                "ST炼石": "100.00%",
+                "高澜股份": "71.43%",
+            },
+            "entry": "RSI <= 35 且连续下跌 >= 2天",
+            "exit": "RSI > 50 或连续上涨2天",
+            "timing": "T+0尾盘买入(当日收盘前)，T+5尾盘卖出",
+            "description": "捕捉连续下跌后的超跌反弹机会，RSI超卖确认下跌动能衰竭。适合尾盘入场，降低隔夜风险。",
+        },
+        {
+            "id": 5,
+            "name": "动量策略",
+            "color": "#E74C3C",
+            "stocks": ["川润股份", "英维克", "爱乐达"],
+            "win_rates": {"川润股份": "68.42%", "英维克": "60.87%", "爱乐达": "68.18%"},
+            "entry": "量价配合+动量加速+超跌反弹+突破信号+MACD金叉，满足2个以上",
+            "exit": "触发任意卖出信号或持仓超过5天",
+            "timing": "T+0尾盘买入(当日收盘前)，T+5尾盘卖出",
+            "description": "综合动量指标，捕捉股票上涨趋势中的加速信号。不同股票有不同的参数优化，针对性强。",
+        },
+    ]
+
+    html = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>策略说明 - 股票监控系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-bottom: 30px;
+        }
+        .header {
+            background: rgba(255,255,255,0.95);
+            padding: 20px;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header h1 { font-size: 22px; color: #333; }
+        .header .back { position: absolute; left: 15px; top: 20px; color: #667eea; text-decoration: none; font-size: 14px; }
+        .container { max-width: 600px; margin: 0 auto; padding: 15px; }
+        .strategy-card {
+            background: white;
+            border-radius: 16px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .strategy-header {
+            padding: 15px 20px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .strategy-title { font-size: 18px; font-weight: 600; }
+        .strategy-body { padding: 15px 20px; }
+        .info-row { margin-bottom: 12px; }
+        .info-label { font-size: 13px; color: #888; margin-bottom: 3px; }
+        .info-value { font-size: 15px; color: #333; line-height: 1.5; }
+        .stocks-tag {
+            display: inline-block;
+            background: #f0f0f0;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 13px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+        .win-rate { color: #27ae60; font-weight: 600; }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: rgba(255,255,255,0.7);
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back">← 返回监控</a>
+        <h1>📈 策略说明文档</h1>
+    </div>
+    <div class="container">
+"""
+
+    for s in strategies:
+        stocks_html = "".join(
+            [f'<span class="stocks-tag">{name}</span>' for name in s["stocks"]]
+        )
+        win_rates_html = " | ".join([f"{k}: {v}" for k, v in s["win_rates"].items()])
+
+        html += f"""
+        <div class="strategy-card">
+            <div class="strategy-header" style="background: {s["color"]}">
+                <span class="strategy-title">策略{s["id"]}: {s["name"]}</span>
+            </div>
+            <div class="strategy-body">
+                <div class="info-row">
+                    <div class="info-label">监控股票</div>
+                    <div class="info-value">{stocks_html}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">历史胜率</div>
+                    <div class="info-value win-rate">{win_rates_html}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">买入条件</div>
+                    <div class="info-value">{s["entry"]}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">卖出条件</div>
+                    <div class="info-value">{s["exit"]}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">交易时机</div>
+                    <div class="info-value">{s["timing"]}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">策略说明</div>
+                    <div class="info-value">{s["description"]}</div>
+                </div>
+            </div>
+        </div>
+"""
+
+    html += """
+        <div class="footer">
+            <div>⚠️ 以上策略仅供参考，不构成投资建议</div>
+            <div style="margin-top: 8px;">投资有风险，入市需谨慎</div>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+    with open("docs/strategy.html", "w", encoding="utf-8") as f:
+        f.write(html)
 
 
 def generate_preview_image(data):
