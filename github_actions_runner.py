@@ -25,9 +25,7 @@ def get_beijing_time():
     return datetime.now(BEIJING_TZ)
 
 
-TUSHARE_TOKEN = os.environ.get(
-    "TUSHARE_TOKEN", "701a94c30c5d1c7af41602c8ebd47b1ca7a2c49bfdd5419379f40c8d"
-)
+TUSHARE_TOKEN = os.environ.get("TUSHARE_TOKEN", "")
 
 os.makedirs("docs", exist_ok=True)
 
