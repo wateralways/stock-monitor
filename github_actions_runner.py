@@ -9,7 +9,14 @@ import os
 import sys
 import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def get_beijing_time():
+    return datetime.now(BEIJING_TZ)
+
 
 TUSHARE_TOKEN = os.environ.get(
     "TUSHARE_TOKEN", "701a94c30c5d1c7af41602c8ebd47b1ca7a2c49bfdd5419379f40c8d"
@@ -41,7 +48,7 @@ def parse_output(output):
     ]
 
     data = {
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "time": get_beijing_time().strftime("%Y-%m-%d %H:%M:%S"),
         "strategies": [],
         "summary": {"total_analyzed": 0, "total_buy": 0, "buy_list": []},
     }
@@ -434,7 +441,7 @@ def generate_html(data):
 def main():
     print("=" * 60)
     print("Stock Monitor - GitHub Actions Runner")
-    print(f"Time: {datetime.now()}")
+    print(f"Time: {get_beijing_time()}")
     print("=" * 60)
 
     try:
