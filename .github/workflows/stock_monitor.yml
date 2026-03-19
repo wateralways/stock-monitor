@@ -6,10 +6,6 @@ on:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # 允许推送代码
-      pages: write      # 允许部署 GitHub Pages
-      id-token: write   # 用于 Pages 部署验证
     
     steps:
     - name: Checkout repository
@@ -30,14 +26,14 @@ jobs:
         TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
       run: |
         python github_actions_runner.py
-            
+        
     - name: Commit and push if changed
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
         git add docs/
         git diff --quiet && git diff --staged --quiet || git commit -m "Update stock monitor report - $(date '+%Y-%m-%d %H:%M')"
-        git pull --rebase origin main  # 新增这行，避免后续冲突
+        git pull --rebase origin main
         git push
         
     - name: Deploy to GitHub Pages
