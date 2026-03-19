@@ -494,9 +494,7 @@ def generate_preview_image(data):
         (600, 80), "Stock Strategy Monitor", font=title_font, fill="white", anchor="mm"
     )
 
-    draw.rectangle(
-        [50, 150, 1150, 400], fill="rgba(255,255,255,0.15)", outline="white", width=2
-    )
+    draw.rectangle([50, 150, 1150, 400], fill="#7a8ed9", outline="white", width=2)
 
     stat_y = 220
     draw.text(
@@ -510,7 +508,7 @@ def generate_preview_image(data):
         (200, stat_y + 45),
         "Analyzed",
         font=small_font,
-        fill="rgba(255,255,255,0.8)",
+        fill="#cccccc",
         anchor="mm",
     )
 
@@ -526,7 +524,7 @@ def generate_preview_image(data):
         (600, stat_y + 45),
         "Buy Signals",
         font=small_font,
-        fill="rgba(255,255,255,0.8)",
+        fill="#cccccc",
         anchor="mm",
     )
 
@@ -538,7 +536,7 @@ def generate_preview_image(data):
         (1000, stat_y + 45),
         "Signal Ratio",
         font=small_font,
-        fill="rgba(255,255,255,0.8)",
+        fill="#cccccc",
         anchor="mm",
     )
 
@@ -553,9 +551,7 @@ def generate_preview_image(data):
             )
             rec_y += 40
 
-    draw.text(
-        (600, 590), time_str, font=small_font, fill="rgba(255,255,255,0.7)", anchor="mm"
-    )
+    draw.text((600, 590), time_str, font=small_font, fill="#bbbbbb", anchor="mm")
 
     img.save("docs/preview.png", "PNG")
     print("Preview image generated: docs/preview.png")
