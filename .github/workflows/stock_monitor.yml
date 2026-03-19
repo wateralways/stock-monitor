@@ -2,6 +2,8 @@ name: Stock Monitor Daily
 on:
   schedule:
     - cron: '30 6 * * 1-5'
+    - cron: '46 6 * * 1-5'
+    - cron: '5 7 * * 1-5'
   workflow_dispatch:
 permissions:
   contents: read
