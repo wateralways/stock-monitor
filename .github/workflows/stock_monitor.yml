@@ -3,6 +3,10 @@ on:
   schedule:
     - cron: '30 6 * * 1-5'
   workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
 jobs:
   monitor:
     runs-on: ubuntu-latest
