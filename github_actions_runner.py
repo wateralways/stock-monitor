@@ -11,6 +11,13 @@ import json
 import subprocess
 from datetime import datetime, timezone, timedelta
 
+try:
+    from PIL import Image, ImageDraw, ImageFont
+
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
 BEIJING_TZ = timezone(timedelta(hours=8))
 
 
@@ -244,6 +251,20 @@ def generate_html(data):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>实时策略监控 - {time_str}</title>
+    
+    <!-- Open Graph / 微信分享卡片 -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://wateralways.github.io/stock-monitor/">
+    <meta property="og:title" content="📈 股票策略监控 - {"买入信号: " + str(summary["total_buy"]) + "只" if summary["total_buy"] > 0 else "暂无信号"}">
+    <meta property="og:description" content="分析{summary["total_analyzed"]}只股票 | 更新时间: {time_str}">
+    <meta property="og:image" content="https://wateralways.github.io/stock-monitor/preview.png">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="📈 股票策略监控">
+    <meta name="twitter:description" content="分析{summary["total_analyzed"]}只股票 | {"买入信号: " + str(summary["total_buy"]) + "只" if summary["total_buy"] > 0 else "暂无信号"}">
+    <meta name="twitter:image" content="https://wateralways.github.io/stock-monitor/preview.png">
+    
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -435,7 +456,109 @@ def generate_html(data):
     with open("docs/report.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+    generate_preview_image(data)
+
     return "docs/index.html"
+
+
+def generate_preview_image(data):
+    if not HAS_PIL:
+        return
+
+    summary = data["summary"]
+    time_str = data["time"]
+
+    img = Image.new("RGB", (1200, 630), "#667eea")
+
+    gradient = Image.new("RGB", (1200, 630), "#764ba2")
+    img = Image.blend(img, gradient, 0.5)
+
+    draw = ImageDraw.Draw(img)
+
+    try:
+        title_font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48
+        )
+        stat_font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32
+        )
+        small_font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24
+        )
+    except:
+        title_font = ImageFont.load_default()
+        stat_font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+
+    draw.text(
+        (600, 80), "Stock Strategy Monitor", font=title_font, fill="white", anchor="mm"
+    )
+
+    draw.rectangle(
+        [50, 150, 1150, 400], fill="rgba(255,255,255,0.15)", outline="white", width=2
+    )
+
+    stat_y = 220
+    draw.text(
+        (200, stat_y),
+        str(summary["total_analyzed"]),
+        font=stat_font,
+        fill="white",
+        anchor="mm",
+    )
+    draw.text(
+        (200, stat_y + 45),
+        "Analyzed",
+        font=small_font,
+        fill="rgba(255,255,255,0.8)",
+        anchor="mm",
+    )
+
+    buy_color = "#e74c3c" if summary["total_buy"] > 0 else "#27ae60"
+    draw.text(
+        (600, stat_y),
+        str(summary["total_buy"]),
+        font=stat_font,
+        fill=buy_color,
+        anchor="mm",
+    )
+    draw.text(
+        (600, stat_y + 45),
+        "Buy Signals",
+        font=small_font,
+        fill="rgba(255,255,255,0.8)",
+        anchor="mm",
+    )
+
+    ratio = summary["total_buy"] / max(summary["total_analyzed"], 1) * 100
+    draw.text(
+        (1000, stat_y), f"{ratio:.1f}%", font=stat_font, fill="white", anchor="mm"
+    )
+    draw.text(
+        (1000, stat_y + 45),
+        "Signal Ratio",
+        font=small_font,
+        fill="rgba(255,255,255,0.8)",
+        anchor="mm",
+    )
+
+    if summary["buy_list"]:
+        rec_y = 450
+        for rec in summary["buy_list"][:3]:
+            rec_text = (
+                f"{rec['name']} | {rec['strategy'][:20]}... | Win: {rec['win_rate']}%"
+            )
+            draw.text(
+                (600, rec_y), rec_text, font=small_font, fill="#FFD700", anchor="mm"
+            )
+            rec_y += 40
+
+    draw.text(
+        (600, 590), time_str, font=small_font, fill="rgba(255,255,255,0.7)", anchor="mm"
+    )
+
+    img.save("docs/preview.png", "PNG")
+    print("Preview image generated: docs/preview.png")
 
 
 def main():
