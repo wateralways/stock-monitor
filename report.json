@@ -1,0 +1,227 @@
+{
+  "time": "2026-03-19 05:28:09",
+  "strategies": [
+    {
+      "name": "RSI+布林带均值回归",
+      "short": "策略1",
+      "color": "#3498DB",
+      "stocks": [
+        {
+          "name": "爱乐达",
+          "code": "300696.SZ",
+          "price": 29.6,
+          "pct_chg": -1.79,
+          "buy_signal": false,
+          "details": [
+            "RSI=29.0, BB位置=0.222"
+          ]
+        },
+        {
+          "name": "ST炼石",
+          "code": "000697.SZ",
+          "price": 9.88,
+          "pct_chg": -2.47,
+          "buy_signal": false,
+          "details": [
+            "RSI=61.0, BB位置=0.514"
+          ]
+        },
+        {
+          "name": "高澜股份",
+          "code": "300499.SZ",
+          "price": 40.4,
+          "pct_chg": -2.42,
+          "buy_signal": false,
+          "details": [
+            "RSI=54.8, BB位置=0.720"
+          ]
+        }
+      ],
+      "buy_count": 0,
+      "total_count": 3
+    },
+    {
+      "name": "MA支撑+KDJ超卖",
+      "short": "策略2",
+      "color": "#9B59B6",
+      "stocks": [
+        {
+          "name": "ST炼石",
+          "code": "000697.SZ",
+          "price": 9.88,
+          "pct_chg": -2.47,
+          "buy_signal": true,
+          "details": [
+            "MA20=9.90, J值=-14.91"
+          ]
+        }
+      ],
+      "buy_count": 1,
+      "total_count": 1
+    },
+    {
+      "name": "多因子买入策略",
+      "short": "策略3",
+      "color": "#E67E22",
+      "stocks": [
+        {
+          "name": "高澜股份",
+          "code": "300499.SZ",
+          "price": 40.4,
+          "pct_chg": -2.42,
+          "buy_signal": false,
+          "details": [
+            "量比=0.73, RSI=52.8"
+          ]
+        },
+        {
+          "name": "英维克",
+          "code": "002837.SZ",
+          "price": 104.31,
+          "pct_chg": -2.22,
+          "buy_signal": false,
+          "details": [
+            "量比=0.58, RSI=45.1"
+          ]
+        }
+      ],
+      "buy_count": 0,
+      "total_count": 2
+    },
+    {
+      "name": "RSI+连跌中等信号",
+      "short": "策略4",
+      "color": "#27AE60",
+      "stocks": [
+        {
+          "name": "裕同科技",
+          "code": "002831.SZ",
+          "price": 35.84,
+          "pct_chg": -5.88,
+          "buy_signal": false,
+          "details": [
+            "RSI=61.5(不满足), 连跌=1天(不满足)"
+          ]
+        },
+        {
+          "name": "扬农化工",
+          "code": "600486.SH",
+          "price": 73.12,
+          "pct_chg": -5.41,
+          "buy_signal": false,
+          "details": [
+            "RSI=39.6(不满足), 连跌=1天(不满足)"
+          ]
+        },
+        {
+          "name": "华测导航",
+          "code": "300627.SZ",
+          "price": 33.94,
+          "pct_chg": -1.94,
+          "buy_signal": false,
+          "details": [
+            "RSI=29.1(满足), 连跌=1天(不满足)"
+          ]
+        },
+        {
+          "name": "川润股份",
+          "code": "002272.SZ",
+          "price": 18.06,
+          "pct_chg": -3.42,
+          "buy_signal": false,
+          "details": [
+            "RSI=44.1(不满足), 连跌=1天(不满足)"
+          ]
+        },
+        {
+          "name": "英维克",
+          "code": "002837.SZ",
+          "price": 104.25,
+          "pct_chg": -2.28,
+          "buy_signal": false,
+          "details": [
+            "RSI=45.0(不满足), 连跌=1天(不满足)"
+          ]
+        },
+        {
+          "name": "ST炼石",
+          "code": "000697.SZ",
+          "price": 9.88,
+          "pct_chg": -2.47,
+          "buy_signal": false,
+          "details": [
+            "RSI=55.1(不满足), 连跌=5天(满足)"
+          ]
+        },
+        {
+          "name": "高澜股份",
+          "code": "300499.SZ",
+          "price": 40.39,
+          "pct_chg": -2.44,
+          "buy_signal": false,
+          "details": [
+            "RSI=52.8(不满足), 连跌=1天(不满足)"
+          ]
+        }
+      ],
+      "buy_count": 0,
+      "total_count": 7
+    },
+    {
+      "name": "动量策略",
+      "short": "策略5",
+      "color": "#E74C3C",
+      "stocks": [
+        {
+          "name": "川润股份",
+          "code": "002272.SZ",
+          "price": 18.07,
+          "pct_chg": -3.37,
+          "buy_signal": false,
+          "details": [
+            "量比=0.52, RSI(6)=25.7",
+            "信号数: 0/5"
+          ]
+        },
+        {
+          "name": "英维克",
+          "code": "002837.SZ",
+          "price": 104.25,
+          "pct_chg": -2.28,
+          "buy_signal": false,
+          "details": [
+            "量比=0.60, RSI(6)=59.0",
+            "信号数: 0/5"
+          ]
+        },
+        {
+          "name": "爱乐达",
+          "code": "300696.SZ",
+          "price": 29.6,
+          "pct_chg": -1.79,
+          "buy_signal": false,
+          "details": [
+            "量比=0.37, RSI(6)=40.5",
+            "信号数: 0/5"
+          ]
+        }
+      ],
+      "buy_count": 0,
+      "total_count": 3
+    }
+  ],
+  "summary": {
+    "total_analyzed": 16,
+    "total_buy": 1,
+    "buy_list": [
+      {
+        "name": "ST炼石",
+        "strategy": "MA支撑+KDJ超卖",
+        "price": 9.88,
+        "win_rate": "61.9",
+        "buy_timing": "T+1开盘",
+        "sell_timing": "T+6开盘"
+      }
+    ]
+  }
+}
