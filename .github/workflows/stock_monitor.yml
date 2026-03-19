@@ -4,7 +4,7 @@ on:
     - cron: '30 6 * * 1-5'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 jobs:
@@ -31,19 +31,14 @@ jobs:
       run: |
         python github_actions_runner.py
         
-    - name: Commit and push if changed
-      run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add docs/
-        if ! git diff --quiet && ! git diff --staged --quiet; then
-          git commit -m "Update stock monitor report - $(date '+%Y-%m-%d %H:%M')"
-        fi
-        git pull --rebase origin main --autostash || true
-        git push
-        
-    - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./docs
+        path: docs
+  deploy:
+    needs: monitor
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Deploy to GitHub Pages
+      uses: actions/deploy-pages@v4
