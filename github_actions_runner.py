@@ -28,7 +28,15 @@ def get_beijing_time():
 os.makedirs("docs", exist_ok=True)
 
 
-def run_monitor():
+def run_monitor(from_file=None):
+    if from_file:
+        try:
+            with open(from_file, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            print(f"[ERROR] Failed to read {from_file}: {e}")
+            return ""
+
     result = subprocess.run(
         [sys.executable, "stock_monitor_unified_realtime.py"],
         capture_output=True,
@@ -764,8 +772,15 @@ def main():
     print(f"Time: {get_beijing_time()}")
     print("=" * 60)
 
+    from_file = None
+    if "--from-file" in sys.argv:
+        idx = sys.argv.index("--from-file")
+        if idx + 1 < len(sys.argv):
+            from_file = sys.argv[idx + 1]
+            print(f"Reading monitor output from: {from_file}")
+
     try:
-        output = run_monitor()
+        output = run_monitor(from_file=from_file)
         if output:
             print(output[:3000])
 

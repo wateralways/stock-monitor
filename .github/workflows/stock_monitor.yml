@@ -48,7 +48,11 @@ jobs:
       env:
         TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
       run: |
-        python github_actions_runner.py
+        python stock_monitor_unified_realtime.py > monitor_output.txt 2>&1 || true
+        echo "--- Monitor output (first 100 lines) ---"
+        head -100 monitor_output.txt
+        echo "--- End monitor output ---"
+        python github_actions_runner.py --from-file monitor_output.txt
         
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
