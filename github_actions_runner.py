@@ -33,8 +33,13 @@ def run_monitor():
         [sys.executable, "stock_monitor_unified_realtime.py"],
         capture_output=True,
         text=True,
-        timeout=180,
+        timeout=300,
     )
+    if result.returncode != 0:
+        print(f"[WARN] Monitor exited with code {result.returncode}")
+    if result.stderr:
+        for line in result.stderr.strip().splitlines():
+            print(f"[STDERR] {line}")
     return result.stdout
 
 
@@ -761,21 +766,35 @@ def main():
 
     try:
         output = run_monitor()
-        print(output)
-
         if output:
-            data = parse_output(output)
-            if data:
-                html_file = generate_html(data)
-                print(f"\n[OK] Report generated: {html_file}")
-                print(f"Total stocks: {data['summary']['total_analyzed']}")
-                print(f"Buy signals: {data['summary']['total_buy']}")
-            else:
-                print("[ERROR] Failed to parse output")
-                sys.exit(1)
+            print(output[:3000])
+
+        data = parse_output(output) if output else None
+
+        if data and data["summary"]["total_analyzed"] > 0:
+            html_file = generate_html(data)
+            print(f"\n[OK] Report generated: {html_file}")
+            print(f"Total stocks: {data['summary']['total_analyzed']}")
+            print(f"Buy signals: {data['summary']['total_buy']}")
         else:
-            print("[ERROR] No output from monitor")
-            sys.exit(1)
+            print("[WARN] No valid data from monitor, generating empty report")
+            empty_data = {
+                "time": get_beijing_time().strftime("%Y-%m-%d %H:%M:%S"),
+                "strategies": [
+                    {"name": cfg["name"], "short": cfg["short"], "color": cfg["color"],
+                     "stocks": [], "buy_count": 0, "total_count": 0}
+                    for cfg in [
+                        {"name": "RSI+布林带均值回归", "short": "策略1", "color": "#3498DB"},
+                        {"name": "MA支撑+KDJ超卖", "short": "策略2", "color": "#9B59B6"},
+                        {"name": "多因子买入策略", "short": "策略3", "color": "#E67E22"},
+                        {"name": "RSI+连跌中等信号", "short": "策略4", "color": "#27AE60"},
+                        {"name": "动量策略", "short": "策略5", "color": "#E74C3C"},
+                    ]
+                ],
+                "summary": {"total_analyzed": 0, "total_buy": 0, "buy_list": []},
+            }
+            html_file = generate_html(empty_data)
+            print(f"[OK] Empty report generated: {html_file}")
     except Exception as e:
         print(f"[ERROR] {e}")
         import traceback
