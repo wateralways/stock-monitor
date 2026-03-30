@@ -478,71 +478,68 @@ def generate_strategy_doc():
             "name": "RSI+布林带均值回归",
             "color": "#3498DB",
             "stocks": ["爱乐达", "ST炼石", "高澜股份"],
-            "win_rates": {"爱乐达": "63.16%", "ST炼石": "75.00%", "高澜股份": "57.14%"},
-            "entry": "RSI < 33 或 布林带位置 < 0.5，且当日上涨收阳",
-            "exit": "RSI > 60 或 布林带位置 > 0.75",
+            "win_rates": {"爱乐达": "80%", "ST炼石": "79%", "高澜股份": "44%"},
+            "entry": "RSI < 自适应阈值(20~45) 或 布林带位置 < 自适应阈值(0.1~0.6)，且当日上涨收阳。非ST股需MA20趋势非下跌。",
+            "exit": "RSI > 自适应卖出阈值(50~70) 或 布林带位置 > 0.75",
             "timing": "T+1开盘买入，T+6开盘卖出",
-            "description": "利用RSI超卖和布林带下轨支撑，捕捉短期反弹机会。适合震荡市中逢低吸纳。",
+            "description": "利用RSI超卖和布林带下轨支撑捕捉反弹。参数根据20日/60日波动率比值自动调节：高波动期收紧阈值避免接飞刀，低波动期放松阈值增加信号。ST股不做趋势过滤。",
+            "adaptive": "RSI阈值 = 33 - (波动率比-1)×6 | BB阈值 = 0.5 - (波动率比-1)×0.2",
         },
         {
             "id": 2,
             "name": "MA支撑+KDJ超卖",
             "color": "#9B59B6",
             "stocks": ["ST炼石"],
-            "win_rates": {"ST炼石": "61.90%"},
-            "entry": "股价在MA20附近(±2%)且上涨，或KDJ的J值 < 30",
+            "win_rates": {"ST炼石": "50%"},
+            "entry": "股价在MA20附近(±2%)且上涨，或KDJ的J值 < 自适应阈值(10~35)",
             "exit": "J值 > 80 或获利5%以上",
             "timing": "T+1开盘买入，T+6开盘卖出",
-            "description": "结合均线支撑和KDJ超卖信号，在技术支撑位附近寻找买入机会。",
+            "description": "结合均线支撑和KDJ超卖信号。KDJ超卖阈值随波动率自动调节，高波动期要求更深度超卖才触发。",
+            "adaptive": "KDJ-J阈值 = 30 - (波动率比-1)×10",
         },
         {
             "id": 3,
             "name": "多因子买入策略",
             "color": "#E67E22",
             "stocks": ["高澜股份", "英维克"],
-            "win_rates": {"高澜股份": "61.54%", "英维克": "58.52%"},
+            "win_rates": {"高澜股份": "62%", "英维克": "59%"},
             "entry": "量价配合 / 动量加速 / 放量突破 / 布林带触及 / 均线多头排列",
             "exit": "触发任意卖出信号或持仓超过5天",
             "timing": "T+1开盘买入，T+6开盘卖出",
-            "description": "综合多个技术指标，包括量价关系、动量、突破、布林带、均线排列等，信号越多买入概率越高。",
+            "description": "综合多个技术指标，信号越多买入概率越高。",
+            "adaptive": "无自适应（固定参数）",
         },
         {
             "id": 4,
             "name": "RSI+连跌中等信号",
             "color": "#27AE60",
             "stocks": [
-                "裕同科技",
-                "扬农化工",
-                "华测导航",
-                "川润股份",
-                "英维克",
-                "ST炼石",
-                "高澜股份",
+                "裕同科技", "扬农化工", "华测导航",
+                "川润股份", "英维克", "ST炼石", "高澜股份",
             ],
             "win_rates": {
-                "裕同科技": "77.78%",
-                "扬农化工": "88.89%",
-                "华测导航": "77.78%",
-                "川润股份": "77.78%",
-                "英维克": "66.67%",
-                "ST炼石": "100.00%",
-                "高澜股份": "71.43%",
+                "裕同科技": "71%", "扬农化工": "80%",
+                "华测导航": "62%", "川润股份": "78%",
+                "英维克": "60%", "ST炼石": "100%",
+                "高澜股份": "75%",
             },
-            "entry": "RSI <= 35 且连续下跌 >= 2天",
+            "entry": "RSI <= 自适应阈值(25~40) 且连续下跌 >= 2天",
             "exit": "RSI > 50 或连续上涨2天",
             "timing": "T+0尾盘买入(当日收盘前)，T+5尾盘卖出",
-            "description": "捕捉连续下跌后的超跌反弹机会，RSI超卖确认下跌动能衰竭。适合尾盘入场，降低隔夜风险。",
+            "description": "捕捉连续下跌后的超跌反弹。RSI阈值随波动率自动调节，高波动期要求更低RSI才视为超卖。",
+            "adaptive": "RSI阈值 = 35 - (波动率比-1)×5",
         },
         {
             "id": 5,
             "name": "动量策略",
             "color": "#E74C3C",
             "stocks": ["川润股份", "英维克", "爱乐达"],
-            "win_rates": {"川润股份": "68.42%", "英维克": "60.87%", "爱乐达": "68.18%"},
-            "entry": "量价配合+动量加速+超跌反弹+突破信号+MACD金叉，满足2个以上",
+            "win_rates": {"川润股份": "67%", "英维克": "62%", "爱乐达": "62%"},
+            "entry": "量价配合+动量加速+超跌反弹+突破信号+MACD金叉，满足2个以上。单动量信号在MA20下跌趋势中不触发。",
             "exit": "触发任意卖出信号或持仓超过5天",
             "timing": "T+0尾盘买入(当日收盘前)，T+5尾盘卖出",
-            "description": "综合动量指标，捕捉股票上涨趋势中的加速信号。不同股票有不同的参数优化，针对性强。",
+            "description": "综合动量指标捕捉上涨加速信号。量比阈值随波动率自动调节，高波动期要求更大量比确认。MA20下跌趋势中单动量信号被过滤。",
+            "adaptive": "量比阈值 = 1.2 + (波动率比-1)×0.3",
         },
     ]
 
@@ -571,6 +568,16 @@ def generate_strategy_doc():
         .header h1 { font-size: 22px; color: #333; }
         .header .back { position: absolute; left: 15px; top: 20px; color: #667eea; text-decoration: none; font-size: 14px; }
         .container { max-width: 600px; margin: 0 auto; padding: 15px; }
+        .intro-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .intro-card h2 { font-size: 18px; color: #333; margin-bottom: 10px; }
+        .intro-card p { font-size: 14px; color: #666; line-height: 1.6; }
+        .intro-card .formula { background: #f8f9fa; padding: 8px 12px; border-radius: 8px; font-family: monospace; font-size: 13px; color: #e74c3c; margin: 8px 0; }
         .strategy-card {
             background: white;
             border-radius: 16px;
@@ -600,6 +607,24 @@ def generate_strategy_doc():
             margin-bottom: 5px;
         }
         .win-rate { color: #27ae60; font-weight: 600; }
+        .adaptive-tag {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 8px;
+            font-size: 11px;
+            margin-left: 5px;
+        }
+        .adaptive-formula {
+            background: #f0f4ff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #667eea;
+            margin-top: 5px;
+        }
         .footer {
             text-align: center;
             padding: 20px;
@@ -610,10 +635,19 @@ def generate_strategy_doc():
 </head>
 <body>
     <div class="header">
-        <a href="index.html" class="back">← 返回监控</a>
-        <h1>📈 策略说明文档</h1>
+        <a href="index.html" class="back">&larr; 返回监控</a>
+        <h1>策略说明文档</h1>
     </div>
     <div class="container">
+        <div class="intro-card">
+            <h2>自适应参数系统</h2>
+            <p>所有策略参数根据当前市场波动率自动调节，不再使用固定阈值。</p>
+            <div class="formula">波动率比 = 20日波动率 / 60日波动率</div>
+            <p>波动率比 &gt; 1 (波动加剧): 收紧阈值，减少信号，避免接飞刀<br>
+               波动率比 &lt; 1 (波动收敛): 放松阈值，增加信号，抓住温和反弹</p>
+            <p style="margin-top:8px; font-size:13px; color:#999;">回测区间: 2025-01-01起 (ST炼石: 2025-05-07起)<br>
+               自适应 vs 固定参数: 累计收益 +427.9% vs +374.1% (+53.9%)</p>
+        </div>
 """
 
     for s in strategies:
@@ -622,10 +656,15 @@ def generate_strategy_doc():
         )
         win_rates_html = " | ".join([f"{k}: {v}" for k, v in s["win_rates"].items()])
 
+        adaptive_html = ""
+        if s.get("adaptive") and s["adaptive"] != "无自适应（固定参数）":
+            adaptive_html = f'<div class="adaptive-formula">{s["adaptive"]}</div>'
+        adaptive_tag = '<span class="adaptive-tag">自适应</span>' if s.get("adaptive") and "无" not in s["adaptive"] else ""
+
         html += f"""
         <div class="strategy-card">
             <div class="strategy-header" style="background: {s["color"]}">
-                <span class="strategy-title">策略{s["id"]}: {s["name"]}</span>
+                <span class="strategy-title">策略{s["id"]}: {s["name"]}{adaptive_tag}</span>
             </div>
             <div class="strategy-body">
                 <div class="info-row">
@@ -633,12 +672,12 @@ def generate_strategy_doc():
                     <div class="info-value">{stocks_html}</div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label">历史胜率</div>
+                    <div class="info-label">回测胜率</div>
                     <div class="info-value win-rate">{win_rates_html}</div>
                 </div>
                 <div class="info-row">
                     <div class="info-label">买入条件</div>
-                    <div class="info-value">{s["entry"]}</div>
+                    <div class="info-value">{s["entry"]}{adaptive_html}</div>
                 </div>
                 <div class="info-row">
                     <div class="info-label">卖出条件</div>
@@ -658,7 +697,7 @@ def generate_strategy_doc():
 
     html += """
         <div class="footer">
-            <div>⚠️ 以上策略仅供参考，不构成投资建议</div>
+            <div>以上策略仅供参考，不构成投资建议</div>
             <div style="margin-top: 8px;">投资有风险，入市需谨慎</div>
         </div>
     </div>
