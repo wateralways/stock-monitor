@@ -100,7 +100,9 @@ def check_s1(df, idx, name):
     latest = sub.iloc[-1]
     rsi = latest["rsi"] if pd.notna(latest["rsi"]) else 50
     bb = latest["bb_position"] if pd.notna(latest["bb_position"]) else 0.5
-    sig = (rsi < ap["rsi_entry"] or bb < ap["bb_entry"]) and latest["pct_chg"] > 0 and latest["close"] > latest["open"]
+    rsi_th = 33 if "ST" in name else ap["rsi_entry"]
+    bb_th = 0.5 if "ST" in name else ap["bb_entry"]
+    sig = (rsi < rsi_th or bb < bb_th) and latest["pct_chg"] > 0 and latest["close"] > latest["open"]
     if not skip: sig = sig and slope >= -1.0
     return sig
 
@@ -143,7 +145,8 @@ def check_s4(df, idx, name):
     sub["cd"] = calculate_consecutive_days(sub["pct_chg"], "down")
     ap = adaptive_params(sub)
     l = sub.iloc[-1]
-    return l["rsi"] <= ap["rsi_consec"] and l["cd"] >= 2
+    rsi_th = 35 if name == "扬农化工" else ap["rsi_consec"]
+    return l["rsi"] <= rsi_th and l["cd"] >= 2
 
 def check_s5(df, idx, name):
     if idx < 60: return False
@@ -159,13 +162,18 @@ def check_s5(df, idx, name):
     sub["dif"] = sub["close"].ewm(span=12).mean()-sub["close"].ewm(span=26).mean()
     sub["dea"] = sub["dif"].ewm(span=9).mean()
     ap = adaptive_params(sub)
-    mt = ap["mom_vol_ratio"]
+    if name == "英维克":
+        mt = 1.2
+        ob_th = 1.3
+    else:
+        mt = ap["mom_vol_ratio"]
+        ob_th = mt * 1.1
     l, p = sub.iloc[-1], sub.iloc[-2]
     slope = (l["ma20"]-sub["ma20"].iloc[-6])/sub["ma20"].iloc[-6]*100 if len(sub)>5 and sub["ma20"].iloc[-6]>0 else 0
-    down = slope < -1.0
+    down = slope < -1.0 if name != "英维克" else False
     svp = l["vr"]>1.5 and l["pct_chg"]>2 and l["close"]>=l["ma5"]
     sm = l["cu"]>=1 and l["pct_chg"]>p["pct_chg"] and l["vr"]>mt
-    sos = l["rsi6"]<30 and l["pct_chg"]>3 and l["vr"]>mt*1.1
+    sos = l["rsi6"]<30 and l["pct_chg"]>3 and l["vr"]>ob_th
     sbr = l["close"]>l["ma20"] and p["close"]<=p["ma20"] and l["vr"]>1.5
     smc = l["dif"]>l["dea"] and p["dif"]<=p["dea"] and (l["dif"]-l["dea"])*2>0
     uvp,um,uos,ubr,umc = svp,sm,sos,sbr,smc
