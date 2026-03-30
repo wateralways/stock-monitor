@@ -445,6 +445,7 @@ def generate_html(data):
         
         <div class="footer">
             <div><a href="strategy.html" style="color: #FFD700; text-decoration: none;">📖 查看策略说明文档</a></div>
+            <div style="margin-top: 8px;"><a href="trades.html" style="color: #FFD700; text-decoration: none;">📋 查看历史交易明细</a></div>
             <div style="margin-top: 10px;">建议持仓周期: T+5 (5个交易日)</div>
             <div style="margin-top: 8px; opacity: 0.7;">⚠️ 投资有风险，策略仅供参考</div>
         </div>
@@ -612,6 +613,9 @@ def generate_strategy_doc():
         <h1>📈 策略说明文档</h1>
     </div>
     <div class="container">
+        <div style="text-align:center;margin-bottom:15px;">
+            <a href="trades.html" style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:10px 24px;border-radius:25px;text-decoration:none;font-size:15px;font-weight:600;box-shadow:0 4px 15px rgba(102,126,234,0.4);">📋 查看历史交易明细</a>
+        </div>
 """
 
     for s in strategies:
