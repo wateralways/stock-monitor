@@ -211,8 +211,34 @@ def backtest(df, name, strategy, func, start):
         if not func(df, idx, name): continue
         bi = idx + buy_off
         si = idx + buy_off + (sell_off - buy_off)
-        if si >= len(df): continue
+
+        # 买入日超出数据范围：信号触发但还没到买入日
+        if bi >= len(df):
+            trades.append({
+                "signal": sig_date.strftime("%Y-%m-%d"),
+                "buy": "待买入", "sell": "-",
+                "bp": 0, "sp": 0, "pnl": 0,
+                "win": None, "pending": True,
+            })
+            continue
+
         bp = df.iloc[idx]["close"] if buy_off == 0 else df.iloc[bi]["open"]
+        buy_date = df.iloc[bi if buy_off > 0 else idx]["trade_date"].strftime("%Y-%m-%d")
+
+        # 卖出日超出数据范围：已买入但还在持仓中
+        if si >= len(df):
+            # 用最新价计算浮动盈亏
+            latest_price = df.iloc[-1]["close"]
+            float_pnl = (latest_price - bp) / bp * 100
+            trades.append({
+                "signal": sig_date.strftime("%Y-%m-%d"),
+                "buy": buy_date, "sell": "持仓中",
+                "bp": round(bp, 2), "sp": round(latest_price, 2),
+                "pnl": round(float_pnl, 2),
+                "win": None, "pending": True,
+            })
+            continue
+
         sp = df.iloc[si]["close"] if t0 else df.iloc[si]["open"]
         pnl = (sp - bp) / bp * 100
         trades.append({
@@ -220,7 +246,7 @@ def backtest(df, name, strategy, func, start):
             "buy": df.iloc[bi if buy_off > 0 else idx]["trade_date"].strftime("%Y-%m-%d"),
             "sell": df.iloc[si]["trade_date"].strftime("%Y-%m-%d"),
             "bp": round(bp, 2), "sp": round(sp, 2),
-            "pnl": round(pnl, 2), "win": pnl > 0,
+            "pnl": round(pnl, 2), "win": pnl > 0, "pending": False,
         })
     return trades
 
@@ -337,6 +363,11 @@ def generate_html(all_data):
             background: #e8f5e9; color: #27ae60;
             padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
         }}
+        .badge-pending {{
+            background: #fff3e0; color: #e67e22;
+            padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+        }}
+        .pending {{ color: #e67e22; font-weight: 600; }}
         .footer {{
             text-align: center; padding: 25px 20px;
             color: rgba(255,255,255,0.7); font-size: 13px;
@@ -366,27 +397,30 @@ def generate_html(all_data):
         for stock_name, code, trades in stocks_trades:
             if not trades:
                 continue
-            total = len(trades)
-            wins = sum(1 for t in trades if t["win"])
-            losses = total - wins
-            wr = wins / total * 100 if total > 0 else 0
-            avg_pnl = sum(t["pnl"] for t in trades) / total
-            total_pnl = sum(t["pnl"] for t in trades)
+            closed = [t for t in trades if not t.get("pending")]
+            pending = [t for t in trades if t.get("pending")]
+            total_closed = len(closed)
+            wins = sum(1 for t in closed if t["win"])
+            wr = wins / total_closed * 100 if total_closed > 0 else 0
+            avg_pnl = sum(t["pnl"] for t in closed) / total_closed if total_closed > 0 else 0
+            total_pnl = sum(t["pnl"] for t in closed)
+            total_all = len(trades)
             card_id = f"{code}_{strategy_name}".replace("+", "").replace(" ", "")
 
             wr_class = "green" if wr >= 60 else ("red" if wr < 50 else "")
             avg_class = "green" if avg_pnl > 0 else "red"
+            pending_tag = f" + {len(pending)}持仓" if pending else ""
 
             html += f"""
         <div class="combo-card">
             <div class="combo-header" style="background:{color}" onclick="toggle('{card_id}')">
                 <span class="combo-title">{stock_name} &middot; {strategy_name}</span>
-                <span class="combo-stats">{wins}/{total} &middot; {wr:.0f}%</span>
+                <span class="combo-stats">{wins}/{total_closed}{pending_tag} &middot; {wr:.0f}%</span>
             </div>
             <div class="combo-body" id="{card_id}">
                 <div class="summary">
                     <div class="summary-item">
-                        <div class="summary-val">{total}</div>
+                        <div class="summary-val">{total_all}</div>
                         <div class="summary-label">总交易</div>
                     </div>
                     <div class="summary-item">
@@ -412,17 +446,33 @@ def generate_html(all_data):
                     <tbody>
 """
             for i, t in enumerate(trades, 1):
-                pnl_cls = "win" if t["win"] else "lose"
-                badge = "badge-win" if t["win"] else "badge-lose"
-                result = "盈" if t["win"] else "亏"
+                is_pending = t.get("pending", False)
+                if is_pending:
+                    pnl_cls = "pending"
+                    badge = "badge-pending"
+                    result = "持仓"
+                    bp_str = f"{t['bp']:.2f}" if t['bp'] > 0 else "-"
+                    sp_str = f"{t['sp']:.2f}" if t['sp'] > 0 else "-"
+                    pnl_str = f"{t['pnl']:+.2f}%" if t['bp'] > 0 else "-"
+                    sell_str = t["sell"]
+                    buy_str = t["buy"] if t["buy"] == "待买入" else t["buy"][5:]
+                else:
+                    pnl_cls = "win" if t["win"] else "lose"
+                    badge = "badge-win" if t["win"] else "badge-lose"
+                    result = "盈" if t["win"] else "亏"
+                    bp_str = f"{t['bp']:.2f}"
+                    sp_str = f"{t['sp']:.2f}"
+                    pnl_str = f"{t['pnl']:+.2f}%"
+                    sell_str = t["sell"][5:]
+                    buy_str = t["buy"][5:]
                 html += f"""                        <tr>
                             <td>{i}</td>
                             <td>{t["signal"][5:]}</td>
-                            <td>{t["buy"][5:]}</td>
-                            <td>{t["sell"][5:]}</td>
-                            <td>{t["bp"]:.2f}</td>
-                            <td>{t["sp"]:.2f}</td>
-                            <td class="{pnl_cls}">{t["pnl"]:+.2f}%</td>
+                            <td>{buy_str}</td>
+                            <td>{sell_str}</td>
+                            <td>{bp_str}</td>
+                            <td>{sp_str}</td>
+                            <td class="{pnl_cls}">{pnl_str}</td>
                             <td><span class="{badge}">{result}</span></td>
                         </tr>
 """
