@@ -190,6 +190,58 @@ def check_s5(df, idx, name):
     return strong or mom_only
 
 
+def check_s6(df, idx, name):
+    """多因子评分超卖 (拓日新能专用, 阈值>=50)"""
+    if idx < 60: return False
+    s = df.iloc[:idx+1].copy()
+    score = 0
+    # RSI14
+    rsi14 = calculate_rsi(s["close"], 14).iloc[-1]
+    if pd.notna(rsi14):
+        if rsi14 < 25: score += 25
+        elif rsi14 < 30: score += 20
+        elif rsi14 < 35: score += 15
+        elif rsi14 < 40: score += 10
+        elif rsi14 < 45: score += 5
+    # BB
+    _, _, _, bp = calculate_bollinger(s["close"], 20, 2)
+    bb = bp.iloc[-1] if pd.notna(bp.iloc[-1]) else 0.5
+    if bb < 0.1: score += 20
+    elif bb < 0.2: score += 16
+    elif bb < 0.3: score += 12
+    elif bb < 0.4: score += 8
+    elif bb < 0.5: score += 4
+    # KDJ J
+    sk = calculate_kdj(s)
+    j = sk["j"].iloc[-1]
+    if pd.notna(j):
+        if j < 0: score += 15
+        elif j < 10: score += 12
+        elif j < 20: score += 8
+        elif j < 30: score += 4
+    # 连跌
+    cd = calculate_consecutive_days(s["pct_chg"], "down").iloc[-1]
+    if cd >= 4: score += 15
+    elif cd >= 3: score += 12
+    elif cd >= 2: score += 8
+    # 5日跌幅
+    if len(s) >= 6:
+        r5 = (s["close"].iloc[-1] / s["close"].iloc[-6] - 1) * 100
+        if r5 < -10: score += 10
+        elif r5 < -7: score += 8
+        elif r5 < -5: score += 6
+        elif r5 < -3: score += 3
+    # 长下影线
+    l = s.iloc[-1]
+    ls = (min(l["close"], l["open"]) - l["low"]) / l["close"] * 100
+    if ls > 1.5: score += 5
+    # 缩量罚分
+    vma5 = s["vol"].rolling(5).mean().iloc[-1]
+    if pd.notna(vma5) and vma5 > 0 and s["vol"].iloc[-1] / vma5 < 0.6:
+        score -= 8
+    return score >= 50
+
+
 # ============================================================
 # 回测引擎
 # ============================================================
@@ -198,6 +250,7 @@ T0_BEST = {
     ("扬农化工","RSI+连跌中等信号"),("华测导航","RSI+连跌中等信号"),
     ("川润股份","MA支撑+KDJ超卖"),("川润股份","RSI+连跌中等信号"),
     ("川润股份","动量策略"),("英维克","动量策略"),
+    ("拓日新能","多因子评分超卖"),
 }
 
 def backtest(df, name, strategy, func, start):
@@ -272,6 +325,9 @@ COMBOS = [
     ]),
     ("动量策略", "#E74C3C", check_s5, [
         ("002272.SZ", "川润股份"), ("002837.SZ", "英维克"), ("300696.SZ", "爱乐达"),
+    ]),
+    ("多因子评分超卖", "#8E44AD", check_s6, [
+        ("002218.SZ", "拓日新能"),
     ]),
 ]
 
