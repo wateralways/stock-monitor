@@ -6,6 +6,7 @@
 
 import sys
 import io
+import os
 import time
 import warnings
 from datetime import datetime
@@ -18,7 +19,7 @@ import tushare as ts
 warnings.filterwarnings("ignore")
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-TUSHARE_TOKEN = "701a94c30c5d1c7af41602c8ebd47b1ca7a2c49bfdd5419379f40c8d"
+TUSHARE_TOKEN = os.environ.get("TUSHARE_TOKEN", "")
 ts.set_token(TUSHARE_TOKEN)
 pro = ts.pro_api()
 

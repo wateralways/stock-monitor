@@ -56,7 +56,8 @@ jobs:
         head -100 monitor_output.txt
         echo "--- End monitor output ---"
         python github_actions_runner.py --from-file monitor_output.txt
-        
+        python generate_trades_page.py || echo "[WARN] trades page generation failed"
+
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
       with:
