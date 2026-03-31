@@ -86,7 +86,7 @@ def parse_output(output):
     in_summary = False
 
     for line in lines:
-        strategy_match = re.search(r"\[\D*([12345])\]", line)
+        strategy_match = re.search(r"\[\D*([123456])\]", line)
         if strategy_match:
             strategy_num = int(strategy_match.group(1))
             current_strategy_idx = strategy_num - 1
