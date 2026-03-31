@@ -145,7 +145,7 @@ def check_s4(df, idx, name):
     sub["cd"] = calculate_consecutive_days(sub["pct_chg"], "down")
     ap = adaptive_params(sub)
     l = sub.iloc[-1]
-    rsi_th = 35 if name == "扬农化工" else ap["rsi_consec"]
+    rsi_th = 35 if name in ("扬农化工", "拓日新能") else ap["rsi_consec"]
     return l["rsi"] <= rsi_th and l["cd"] >= 2
 
 def check_s5(df, idx, name):
@@ -267,6 +267,7 @@ COMBOS = [
     ("RSI+连跌中等信号", "#27AE60", check_s4, [
         ("002831.SZ", "裕同科技"), ("600486.SH", "扬农化工"), ("300627.SZ", "华测导航"),
         ("002272.SZ", "川润股份"), ("000697.SZ", "ST炼石"), ("300499.SZ", "高澜股份"),
+        ("002218.SZ", "拓日新能"),
     ]),
     ("动量策略", "#E74C3C", check_s5, [
         ("002272.SZ", "川润股份"), ("002837.SZ", "英维克"), ("300696.SZ", "爱乐达"),
