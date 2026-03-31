@@ -60,6 +60,7 @@ def parse_output(output):
         {"name": "多因子买入策略", "short": "策略3", "color": "#E67E22"},
         {"name": "RSI+连跌中等信号", "short": "策略4", "color": "#27AE60"},
         {"name": "动量策略", "short": "策略5", "color": "#E74C3C"},
+        {"name": "多因子评分超卖", "short": "策略6", "color": "#8E44AD"},
     ]
 
     data = {
@@ -819,6 +820,7 @@ def main():
                         {"name": "多因子买入策略", "short": "策略3", "color": "#E67E22"},
                         {"name": "RSI+连跌中等信号", "short": "策略4", "color": "#27AE60"},
                         {"name": "动量策略", "short": "策略5", "color": "#E74C3C"},
+                        {"name": "多因子评分超卖", "short": "策略6", "color": "#8E44AD"},
                     ]
                 ],
                 "summary": {"total_analyzed": 0, "total_buy": 0, "buy_list": []},
