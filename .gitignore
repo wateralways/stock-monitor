@@ -13,6 +13,7 @@ build/
 
 # Data files
 *.json
+!docs/trades_data.json
 *.csv
 *.log
 

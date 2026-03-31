@@ -300,7 +300,7 @@ def backtest(df, name, strategy, func, start):
             "buy": df.iloc[bi if buy_off > 0 else idx]["trade_date"].strftime("%Y-%m-%d"),
             "sell": df.iloc[si]["trade_date"].strftime("%Y-%m-%d"),
             "bp": round(bp, 2), "sp": round(sp, 2),
-            "pnl": round(pnl, 2), "win": pnl > 0, "pending": False,
+            "pnl": round(pnl, 2), "win": bool(pnl > 0), "pending": False,
         })
     return trades
 
@@ -561,23 +561,51 @@ def generate_html(all_data):
     return html
 
 
+import json as _json
+
+TRADES_JSON = "docs/trades_data.json"
+
+
+def load_saved_trades():
+    """加载已保存的交易记录"""
+    if os.path.exists(TRADES_JSON):
+        with open(TRADES_JSON, "r", encoding="utf-8") as f:
+            return _json.load(f)
+    return {}
+
+
+def save_trades(all_trades):
+    """保存交易记录"""
+    with open(TRADES_JSON, "w", encoding="utf-8") as f:
+        _json.dump(all_trades, f, ensure_ascii=False, indent=2)
+
+
 def main():
     print("=" * 80)
-    print("生成历史交易明细页面")
+    print("生成历史交易明细页面 (增量更新)")
     print("=" * 80)
 
-    # 获取数据
+    saved = load_saved_trades()
+    full_rerun = not saved  # 无历史数据时全量回测
+
+    if full_rerun:
+        print("\n[全量模式] 无历史数据，执行全量回测")
+    else:
+        print(f"\n[增量模式] 已有 {sum(len(v) for v in saved.values())} 条历史记录")
+
+    # 获取数据（增量模式只需近100天用于指标计算+新信号检测）
     all_codes = set()
     for _, _, _, stocks in COMBOS:
         for code, _ in stocks:
             all_codes.add(code)
 
-    print("\n获取数据...")
+    data_start = "20240901" if full_rerun else "20250101"
+    print(f"\n获取数据 (起始: {data_start})...")
     cache = {}
     for code in sorted(all_codes):
         print(f"  {code}...", end=" ", flush=True)
         try:
-            df = pro.daily(ts_code=code, start_date="20240901")
+            df = pro.daily(ts_code=code, start_date=data_start)
             if df is not None and not df.empty:
                 df = df.sort_values("trade_date").reset_index(drop=True)
                 df["trade_date"] = pd.to_datetime(df["trade_date"])
@@ -589,28 +617,64 @@ def main():
             print(f"ERROR: {e}")
         time.sleep(0.3)
 
-    # 回测
-    print("\n回测中...")
+    # 逐组合处理
+    print("\n处理交易记录...")
     all_data = []
+    updated_trades = {}
+
     for strategy_name, color, func, stocks in COMBOS:
         stock_results = []
         for code, name in stocks:
             if code not in cache:
                 continue
+            combo_key = f"{code}|{strategy_name}"
             start = "2025-05-07" if "ST" in name else "2025-01-01"
-            trades = backtest(cache[code], name, strategy_name, func, start)
-            wins = sum(1 for t in trades if t["win"])
+
+            if full_rerun or combo_key not in saved:
+                # 全量回测
+                trades = backtest(cache[code], name, strategy_name, func, start)
+                mode = "全量"
+            else:
+                # 增量: 保留已完成的交易，只更新 pending 和检查新信号
+                old_trades = saved[combo_key]
+                completed = [t for t in old_trades if not t.get("pending")]
+                last_signal = max((t["signal"] for t in old_trades), default=start)
+
+                # 从最后一个信号日往前10天开始检查（确保不遗漏）
+                check_start = (pd.to_datetime(last_signal) - pd.Timedelta(days=15)).strftime("%Y-%m-%d")
+                if check_start < start:
+                    check_start = start
+
+                # 跑新的回测获取新信号
+                new_trades = backtest(cache[code], name, strategy_name, func, check_start)
+
+                # 合并: 保留已完成的 + 用新数据覆盖 pending 和新信号
+                completed_sigs = set(t["signal"] for t in completed)
+                fresh = [t for t in new_trades if t["signal"] not in completed_sigs]
+                trades = completed + fresh
+                trades.sort(key=lambda t: t["signal"])
+                mode = f"增量(+{len(fresh)}新)"
+
+            # 统计
+            closed = [t for t in trades if not t.get("pending")]
+            wins = sum(1 for t in closed if t["win"])
             total = len(trades)
-            wr = wins/total*100 if total > 0 else 0
-            print(f"  {name} + {strategy_name}: {total}笔, 胜率{wr:.1f}%")
+            wr = wins / len(closed) * 100 if closed else 0
+            print(f"  {name} + {strategy_name}: {total}笔, 胜率{wr:.1f}% [{mode}]")
+
+            updated_trades[combo_key] = trades
             stock_results.append((name, code, trades))
         all_data.append((strategy_name, color, func, stock_results))
+
+    # 保存更新后的交易数据
+    save_trades(updated_trades)
+    print(f"\n交易数据已保存到 {TRADES_JSON}")
 
     # 生成 HTML
     html = generate_html(all_data)
     with open("docs/trades.html", "w", encoding="utf-8") as f:
         f.write(html)
-    print(f"\n已生成 docs/trades.html ({len(html)} bytes)")
+    print(f"已生成 docs/trades.html ({len(html)} bytes)")
 
 
 if __name__ == "__main__":
