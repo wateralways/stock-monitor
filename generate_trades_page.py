@@ -242,6 +242,31 @@ def check_s6(df, idx, name):
     return score >= 50
 
 
+def check_s7(df, idx, name):
+    """KDJ超卖反弹 (英维克专用): J<10 且当日涨"""
+    if idx < 30: return False
+    s = df.iloc[:idx+1].copy()
+    s = calculate_kdj(s)
+    l = s.iloc[-1]
+    return pd.notna(l["j"]) and l["j"] < 10 and l["pct_chg"] > 0
+
+
+def check_s8a(df, idx, name):
+    """深跌反弹-5日跌>10% (高澜专用, T+0/T+5)"""
+    if idx < 10: return False
+    s = df.iloc[:idx+1]
+    ret5 = (s["close"].iloc[-1] / s["close"].iloc[-6] - 1) * 100 if len(s) >= 6 else 0
+    return ret5 < -10
+
+
+def check_s8b(df, idx, name):
+    """深跌反弹-10日跌>15% (高澜专用, T+1/T+4)"""
+    if idx < 15: return False
+    s = df.iloc[:idx+1]
+    ret10 = (s["close"].iloc[-1] / s["close"].iloc[-11] - 1) * 100 if len(s) >= 11 else 0
+    return ret10 < -15
+
+
 # ============================================================
 # 回测引擎
 # ============================================================
@@ -249,14 +274,19 @@ T0_BEST = {
     ("高澜股份","RSI+连跌中等信号"),("裕同科技","RSI+连跌中等信号"),
     ("扬农化工","RSI+连跌中等信号"),("华测导航","RSI+连跌中等信号"),
     ("川润股份","MA支撑+KDJ超卖"),("川润股份","RSI+连跌中等信号"),
-    ("川润股份","动量策略"),("英维克","动量策略"),
+    ("川润股份","动量策略"),
     ("拓日新能","多因子评分超卖"),
+    ("英维克","KDJ超卖反弹"),
+    ("高澜股份","深跌反弹5日"),
 }
 
-def backtest(df, name, strategy, func, start):
-    t0 = (name, strategy) in T0_BEST
-    buy_off = 0 if t0 else 1
-    sell_off = 5 if t0 else 6
+def backtest(df, name, strategy, func, start, custom_timing=None):
+    if custom_timing:
+        buy_off, sell_off = custom_timing
+    else:
+        buy_off = 0 if (name, strategy) in T0_BEST else 1
+        sell_off = 5 if buy_off == 0 else 6
+    use_close_sell = (buy_off == 0)  # T+0买用收盘价卖, T+1买用开盘价卖
     trades = []
     start_dt = pd.to_datetime(start)
     for idx in range(60, len(df)):
@@ -293,7 +323,7 @@ def backtest(df, name, strategy, func, start):
             })
             continue
 
-        sp = df.iloc[si]["close"] if t0 else df.iloc[si]["open"]
+        sp = df.iloc[si]["close"] if use_close_sell else df.iloc[si]["open"]
         pnl = (sp - bp) / bp * 100
         trades.append({
             "signal": sig_date.strftime("%Y-%m-%d"),
@@ -310,7 +340,7 @@ def backtest(df, name, strategy, func, start):
 # ============================================================
 COMBOS = [
     ("RSI+布林带均值回归", "#3498DB", check_s1, [
-        ("300696.SZ", "爱乐达"), ("000697.SZ", "ST炼石"), ("300499.SZ", "高澜股份"),
+        ("300696.SZ", "爱乐达"), ("000697.SZ", "ST炼石"),
     ]),
     ("MA支撑+KDJ超卖", "#9B59B6", check_s2, [
         ("000697.SZ", "ST炼石"),
@@ -324,11 +354,20 @@ COMBOS = [
         ("002218.SZ", "拓日新能"),
     ]),
     ("动量策略", "#E74C3C", check_s5, [
-        ("002272.SZ", "川润股份"), ("002837.SZ", "英维克"), ("300696.SZ", "爱乐达"),
+        ("002272.SZ", "川润股份"), ("300696.SZ", "爱乐达"),
     ]),
     ("多因子评分超卖", "#8E44AD", check_s6, [
         ("002218.SZ", "拓日新能"),
     ]),
+    ("KDJ超卖反弹", "#16A085", check_s7, [
+        ("002837.SZ", "英维克"),
+    ]),
+    ("深跌反弹5日", "#D35400", check_s8a, [
+        ("300499.SZ", "高澜股份"),
+    ]),
+    ("深跌反弹10日", "#D35400", check_s8b, [
+        ("300499.SZ", "高澜股份"),
+    ], (1, 4)),  # T+1买/T+4卖
 ]
 
 
@@ -595,8 +634,8 @@ def main():
 
     # 获取数据（增量模式只需近100天用于指标计算+新信号检测）
     all_codes = set()
-    for _, _, _, stocks in COMBOS:
-        for code, _ in stocks:
+    for combo in COMBOS:
+        for code, _ in combo[3]:
             all_codes.add(code)
 
     data_start = "20240901" if full_rerun else "20250101"
@@ -622,7 +661,9 @@ def main():
     all_data = []
     updated_trades = {}
 
-    for strategy_name, color, func, stocks in COMBOS:
+    for combo in COMBOS:
+        strategy_name, color, func, stocks = combo[0], combo[1], combo[2], combo[3]
+        custom_timing = combo[4] if len(combo) > 4 else None
         stock_results = []
         for code, name in stocks:
             if code not in cache:
@@ -632,7 +673,7 @@ def main():
 
             if full_rerun or combo_key not in saved:
                 # 全量回测
-                trades = backtest(cache[code], name, strategy_name, func, start)
+                trades = backtest(cache[code], name, strategy_name, func, start, custom_timing)
                 mode = "全量"
             else:
                 # 增量: 保留已完成的交易，只更新 pending 和检查新信号
@@ -646,7 +687,7 @@ def main():
                     check_start = start
 
                 # 跑新的回测获取新信号
-                new_trades = backtest(cache[code], name, strategy_name, func, check_start)
+                new_trades = backtest(cache[code], name, strategy_name, func, check_start, custom_timing)
 
                 # 合并: 保留已完成的 + 用新数据覆盖 pending 和新信号
                 completed_sigs = set(t["signal"] for t in completed)

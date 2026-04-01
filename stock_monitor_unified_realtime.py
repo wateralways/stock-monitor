@@ -210,7 +210,6 @@ class Strategy1_RSI_Bollinger:
     STOCKS = [
         {"code": "300696.SZ", "name": "爱乐达", "sina_code": "sz300696"},
         {"code": "000697.SZ", "name": "ST炼石", "sina_code": "sz000697"},
-        {"code": "300499.SZ", "name": "高澜股份", "sina_code": "sz300499"},
     ]
 
     @classmethod
@@ -468,7 +467,6 @@ class Strategy5_Momentum:
     NAME = "动量策略"
     STOCKS = [
         {"code": "002272.SZ", "sina_code": "sz002272", "name": "川润股份"},
-        {"code": "002837.SZ", "sina_code": "sz002837", "name": "英维克"},
         {"code": "300696.SZ", "sina_code": "sz300696", "name": "爱乐达"},
     ]
 
@@ -743,6 +741,85 @@ class Strategy6_ScoreModel:
         }
 
 
+class Strategy7_KDJ_Bounce:
+    NAME = "KDJ超卖反弹"
+    STOCKS = [
+        {"code": "002837.SZ", "name": "英维克", "sina_code": "sz002837"},
+    ]
+
+    @classmethod
+    def analyze(cls, stock: Dict) -> Optional[Dict]:
+        df = DataFetcher.fetch_history_data(stock["code"], days=100)
+        if df is None or len(df) < 30:
+            return None
+        rt = DataFetcher.fetch_realtime_sina(stock["sina_code"])
+        if rt is None:
+            return None
+        df = DataFetcher.merge_realtime_data(df, rt)
+        df = TechnicalIndicators.calculate_kdj(df)
+        latest = df.iloc[-1]
+        today_pct = (rt["close"] - rt["pre_close"]) / rt["pre_close"] * 100
+
+        j_value = latest["j"]
+        is_up = today_pct > 0
+        buy_signal = pd.notna(j_value) and j_value < 10 and is_up
+
+        return {
+            "strategy": cls.NAME,
+            "name": stock["name"],
+            "code": stock["code"],
+            "price": rt["close"],
+            "pct_chg": today_pct,
+            "j_value": j_value,
+            "k_value": latest["k"],
+            "buy_signal": buy_signal,
+        }
+
+
+class Strategy8_DeepDrop:
+    NAME = "深跌反弹"
+    STOCKS = [
+        {"code": "300499.SZ", "name": "高澜股份", "sina_code": "sz300499"},
+    ]
+
+    @classmethod
+    def analyze(cls, stock: Dict) -> Optional[Dict]:
+        df = DataFetcher.fetch_history_data(stock["code"], days=100)
+        if df is None or len(df) < 20:
+            return None
+        rt = DataFetcher.fetch_realtime_sina(stock["sina_code"])
+        if rt is None:
+            return None
+        df = DataFetcher.merge_realtime_data(df, rt)
+        latest = df.iloc[-1]
+
+        # 5日跌幅
+        ret5d = (latest["close"] / df["close"].iloc[-6] - 1) * 100 if len(df) >= 6 else 0
+        # 10日跌幅
+        ret10d = (latest["close"] / df["close"].iloc[-11] - 1) * 100 if len(df) >= 11 else 0
+
+        signal_5d = ret5d < -10  # 5日跌>10%, T+0/T+5
+        signal_10d = ret10d < -15  # 10日跌>15%, T+1/T+4
+
+        signals = []
+        if signal_5d:
+            signals.append(f"5日跌{ret5d:.1f}%")
+        if signal_10d:
+            signals.append(f"10日跌{ret10d:.1f}%")
+
+        return {
+            "strategy": cls.NAME,
+            "name": stock["name"],
+            "code": stock["code"],
+            "price": rt["close"],
+            "pct_chg": (rt["close"] - rt["pre_close"]) / rt["pre_close"] * 100,
+            "ret5d": round(ret5d, 1),
+            "ret10d": round(ret10d, 1),
+            "signals": signals,
+            "buy_signal": signal_5d or signal_10d,
+        }
+
+
 def load_positions() -> List:
     if os.path.exists(POSITION_FILE):
         with open(POSITION_FILE, "r", encoding="utf-8") as f:
@@ -763,11 +840,10 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("ST炼石", "RSI+布林带均值回归"): 69.6,
         ("ST炼石", "MA支撑+KDJ超卖"): 60.9,
         ("ST炼石", "RSI+连跌中等信号"): 100.0,
-        ("高澜股份", "RSI+布林带均值回归"): 50.0,
         ("高澜股份", "多因子买入策略"): 60.8,
         ("高澜股份", "RSI+连跌中等信号"): 56.2,
         ("英维克", "多因子买入策略"): 58.2,
-        ("英维克", "动量策略"): 53.1,
+        ("英维克", "KDJ超卖反弹"): 84.6,
         ("裕同科技", "RSI+连跌中等信号"): 78.6,
         ("扬农化工", "RSI+连跌中等信号"): 71.4,
         ("华测导航", "RSI+连跌中等信号"): 68.8,
@@ -775,6 +851,7 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("川润股份", "动量策略"): 59.3,
         ("拓日新能", "RSI+连跌中等信号"): 85.7,
         ("拓日新能", "多因子评分超卖"): 86.4,
+        ("高澜股份", "深跌反弹"): 81.8,
     }
     return win_rates.get((stock_name, strategy_name), 0.0)
 
@@ -789,8 +866,9 @@ def get_trade_timing(stock_name: str, strategy_name: str) -> Dict:
         ("川润股份", "MA支撑+KDJ超卖"),
         ("川润股份", "RSI+连跌中等信号"),
         ("川润股份", "动量策略"),
-        ("英维克", "动量策略"),
         ("拓日新能", "多因子评分超卖"),
+        ("英维克", "KDJ超卖反弹"),
+        ("高澜股份", "深跌反弹"),
     }
     if (stock_name, strategy_name) in t0_best:
         return {
@@ -870,6 +948,18 @@ def print_strategy_results(strategy_name: str, results: List[Dict]):
                 f"BB={r.get('bb_position', 0):.2f}, J={r.get('j_value', 0):.1f}, "
                 f"连跌={r.get('consecutive_down', 0)}天"
             )
+        elif r.get("strategy") == Strategy7_KDJ_Bounce.NAME:
+            print(
+                f"       J={r.get('j_value', 0):.1f}, K={r.get('k_value', 0):.1f}, "
+                f"涨幅={r.get('pct_chg', 0):+.2f}%"
+            )
+        elif r.get("strategy") == Strategy8_DeepDrop.NAME:
+            sigs = r.get("signals", [])
+            print(
+                f"       5日跌幅={r.get('ret5d', 0):.1f}%, 10日跌幅={r.get('ret10d', 0):.1f}%"
+            )
+            if sigs:
+                print(f"       触发: {', '.join(sigs)}")
     print(f"\n  买入信号数量: {len(buy_signals)}/{len(results)}")
 
 
@@ -1028,6 +1118,41 @@ def main():
             print("失败")
     all_results[Strategy6_ScoreModel.NAME] = results
     print_strategy_results(Strategy6_ScoreModel.NAME, results)
+
+    print("\n[策略7] KDJ超卖反弹")
+    results = []
+    for stock in Strategy7_KDJ_Bounce.STOCKS:
+        print(f"  分析 {stock['name']}...", end=" ")
+        r = Strategy7_KDJ_Bounce.analyze(stock)
+        if r:
+            results.append(r)
+            win_rate = get_history_win_rate(stock["name"], "KDJ超卖反弹")
+            timing = get_trade_timing(stock["name"], "KDJ超卖反弹")
+            r["win_rate"] = win_rate
+            r["timing"] = timing
+            print(f"完成 - J={r.get('j_value', 0):.1f} {'买入信号' if r.get('buy_signal') else '无信号'}")
+        else:
+            print("失败")
+    all_results[Strategy7_KDJ_Bounce.NAME] = results
+    print_strategy_results(Strategy7_KDJ_Bounce.NAME, results)
+
+    print("\n[策略8] 深跌反弹")
+    results = []
+    for stock in Strategy8_DeepDrop.STOCKS:
+        print(f"  分析 {stock['name']}...", end=" ")
+        r = Strategy8_DeepDrop.analyze(stock)
+        if r:
+            results.append(r)
+            win_rate = get_history_win_rate(stock["name"], "深跌反弹")
+            timing = get_trade_timing(stock["name"], "深跌反弹")
+            r["win_rate"] = win_rate
+            r["timing"] = timing
+            sigs = r.get("signals", [])
+            print(f"完成 - {', '.join(sigs) if sigs else '无信号'}")
+        else:
+            print("失败")
+    all_results[Strategy8_DeepDrop.NAME] = results
+    print_strategy_results(Strategy8_DeepDrop.NAME, results)
 
     print_summary_with_timing(all_results)
 
