@@ -791,32 +791,35 @@ class Strategy8_DeepDrop:
         if rt is None:
             return None
         df = DataFetcher.merge_realtime_data(df, rt)
+        df["rsi"] = TechnicalIndicators.calculate_rsi(df["close"], 14)
         latest = df.iloc[-1]
+        today_pct = (rt["close"] - rt["pre_close"]) / rt["pre_close"] * 100
 
         # 5日跌幅
         ret5d = (latest["close"] / df["close"].iloc[-6] - 1) * 100 if len(df) >= 6 else 0
-        # 10日跌幅
-        ret10d = (latest["close"] / df["close"].iloc[-11] - 1) * 100 if len(df) >= 11 else 0
+        rsi14 = latest["rsi"]
 
-        signal_5d = ret5d < -10  # 5日跌>10%, T+0/T+5
-        signal_10d = ret10d < -15  # 10日跌>15%, T+1/T+4
+        # 信号A: 5日跌>5% & RSI<40 & 当日涨, T+0/T+4
+        signal_a = ret5d < -5 and pd.notna(rsi14) and rsi14 < 40 and today_pct > 0
+        # 信号B: 5日跌>10%, T+0/T+5
+        signal_b = ret5d < -10
 
         signals = []
-        if signal_5d:
-            signals.append(f"5日跌{ret5d:.1f}%")
-        if signal_10d:
-            signals.append(f"10日跌{ret10d:.1f}%")
+        if signal_a:
+            signals.append(f"5日跌{ret5d:.1f}%+RSI{rsi14:.0f}+涨(T+0/T+4)")
+        if signal_b:
+            signals.append(f"5日跌{ret5d:.1f}%(T+0/T+5)")
 
         return {
             "strategy": cls.NAME,
             "name": stock["name"],
             "code": stock["code"],
             "price": rt["close"],
-            "pct_chg": (rt["close"] - rt["pre_close"]) / rt["pre_close"] * 100,
+            "pct_chg": today_pct,
             "ret5d": round(ret5d, 1),
-            "ret10d": round(ret10d, 1),
+            "rsi": rsi14,
             "signals": signals,
-            "buy_signal": signal_5d or signal_10d,
+            "buy_signal": signal_a or signal_b,
         }
 
 
@@ -868,7 +871,7 @@ def get_trade_timing(stock_name: str, strategy_name: str) -> Dict:
         ("川润股份", "动量策略"),
         ("拓日新能", "多因子评分超卖"),
         ("英维克", "KDJ超卖反弹"),
-        ("高澜股份", "深跌反弹"),
+        ("高澜股份", "深跌反弹"),  # 两个子信号都是T+0买
     }
     if (stock_name, strategy_name) in t0_best:
         return {

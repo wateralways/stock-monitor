@@ -252,19 +252,21 @@ def check_s7(df, idx, name):
 
 
 def check_s8a(df, idx, name):
+    """深跌反弹-5日跌>5%&RSI<40&当日涨 (高澜专用, T+0/T+4)"""
+    if idx < 60: return False
+    s = df.iloc[:idx+1].copy()
+    ret5 = (s["close"].iloc[-1] / s["close"].iloc[-6] - 1) * 100 if len(s) >= 6 else 0
+    rsi14 = calculate_rsi(s["close"], 14).iloc[-1]
+    l = s.iloc[-1]
+    return ret5 < -5 and pd.notna(rsi14) and rsi14 < 40 and l["pct_chg"] > 0
+
+
+def check_s8b(df, idx, name):
     """深跌反弹-5日跌>10% (高澜专用, T+0/T+5)"""
     if idx < 10: return False
     s = df.iloc[:idx+1]
     ret5 = (s["close"].iloc[-1] / s["close"].iloc[-6] - 1) * 100 if len(s) >= 6 else 0
     return ret5 < -10
-
-
-def check_s8b(df, idx, name):
-    """深跌反弹-10日跌>15% (高澜专用, T+1/T+4)"""
-    if idx < 15: return False
-    s = df.iloc[:idx+1]
-    ret10 = (s["close"].iloc[-1] / s["close"].iloc[-11] - 1) * 100 if len(s) >= 11 else 0
-    return ret10 < -15
 
 
 # ============================================================
@@ -277,7 +279,8 @@ T0_BEST = {
     ("川润股份","动量策略"),
     ("拓日新能","多因子评分超卖"),
     ("英维克","KDJ超卖反弹"),
-    ("高澜股份","深跌反弹5日"),
+    ("高澜股份","深跌反弹(跌5%+RSI+涨)"),
+    ("高澜股份","深跌反弹(跌10%)"),
 }
 
 def backtest(df, name, strategy, func, start, custom_timing=None):
@@ -362,12 +365,12 @@ COMBOS = [
     ("KDJ超卖反弹", "#16A085", check_s7, [
         ("002837.SZ", "英维克"),
     ]),
-    ("深跌反弹5日", "#D35400", check_s8a, [
+    ("深跌反弹(跌5%+RSI+涨)", "#D35400", check_s8a, [
         ("300499.SZ", "高澜股份"),
-    ]),
-    ("深跌反弹10日", "#D35400", check_s8b, [
+    ], (0, 4)),  # T+0买/T+4卖
+    ("深跌反弹(跌10%)", "#D35400", check_s8b, [
         ("300499.SZ", "高澜股份"),
-    ], (1, 4)),  # T+1买/T+4卖
+    ]),  # T+0/T+5 via T0_BEST
 ]
 
 
