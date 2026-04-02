@@ -958,11 +958,26 @@ def print_strategy_results(strategy_name: str, results: List[Dict]):
             )
         elif r.get("strategy") == Strategy8_DeepDrop.NAME:
             sigs = r.get("signals", [])
+            rsi_s = f"{r.get('rsi', 0):.1f}" if pd.notna(r.get('rsi')) else "-"
             print(
-                f"       5日跌幅={r.get('ret5d', 0):.1f}%, 10日跌幅={r.get('ret10d', 0):.1f}%"
+                f"       5日跌幅={r.get('ret5d', 0):.1f}%, RSI={rsi_s}, 涨跌={r.get('pct_chg', 0):+.2f}%"
             )
             if sigs:
                 print(f"       触发: {', '.join(sigs)}")
+            else:
+                # 显示距离触发的距离
+                ret5d = r.get('ret5d', 0)
+                rsi = r.get('rsi', 50)
+                notes = []
+                if ret5d >= -5:
+                    notes.append(f"5日跌幅不足(需<-5%)")
+                elif ret5d >= -10:
+                    if pd.notna(rsi) and rsi >= 40:
+                        notes.append(f"RSI未达标(需<40)")
+                    if r.get('pct_chg', 0) <= 0:
+                        notes.append(f"当日未涨")
+                if notes:
+                    print(f"       未触发: {', '.join(notes)}")
     print(f"\n  买入信号数量: {len(buy_signals)}/{len(results)}")
 
 
