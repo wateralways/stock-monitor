@@ -780,6 +780,7 @@ class Strategy8_DeepDrop:
     NAME = "深跌反弹"
     STOCKS = [
         {"code": "300499.SZ", "name": "高澜股份", "sina_code": "sz300499"},
+        {"code": "002272.SZ", "name": "川润股份", "sina_code": "sz002272"},
     ]
 
     @classmethod
@@ -799,10 +800,10 @@ class Strategy8_DeepDrop:
         ret5d = (latest["close"] / df["close"].iloc[-6] - 1) * 100 if len(df) >= 6 else 0
         rsi14 = latest["rsi"]
 
-        # 信号A: 5日跌>5% & RSI<40 & 当日涨, T+0/T+4
+        # 信号A: 5日跌>5% & RSI<40 & 当日涨, T+1/T+4
         signal_a = ret5d < -5 and pd.notna(rsi14) and rsi14 < 40 and today_pct > 0
-        # 信号B: 5日跌>10%, T+0/T+5
-        signal_b = ret5d < -10
+        # 信号B: 5日跌>10%, T+0/T+5 (仅高澜)
+        signal_b = ret5d < -10 and stock["name"] == "高澜股份"
 
         signals = []
         if signal_a:
@@ -851,7 +852,8 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("扬农化工", "RSI+连跌中等信号"): 71.4,
         ("华测导航", "RSI+连跌中等信号"): 68.8,
         ("川润股份", "RSI+连跌中等信号"): 62.5,
-        ("川润股份", "动量策略"): 59.3,
+        ("川润股份", "动量策略"): 63.0,
+        ("川润股份", "深跌反弹"): 70.0,
         ("拓日新能", "RSI+连跌中等信号"): 85.7,
         ("拓日新能", "多因子评分超卖"): 86.4,
         ("高澜股份", "深跌反弹"): 81.8,
@@ -873,6 +875,26 @@ def get_trade_timing(stock_name: str, strategy_name: str) -> Dict:
         ("英维克", "KDJ超卖反弹"),
         ("高澜股份", "深跌反弹"),  # 两个子信号都是T+0买
     }
+    # 特殊时机：川润动量T+0/T+4，川润深跌反弹T+1/T+4
+    t4_sell = {
+        ("川润股份", "动量策略"),
+        ("川润股份", "深跌反弹"),
+    }
+    if (stock_name, strategy_name) in t4_sell:
+        if (stock_name, strategy_name) in t0_best:
+            return {
+                "buy_timing": "T+0尾盘",
+                "sell_timing": "T+4尾盘",
+                "buy_desc": "当日尾盘收盘前买入",
+                "sell_desc": "最晚第4个交易日尾盘卖出",
+            }
+        else:
+            return {
+                "buy_timing": "T+1开盘",
+                "sell_timing": "T+4开盘",
+                "buy_desc": "次日开盘买入",
+                "sell_desc": "最晚第4个交易日开盘卖出",
+            }
     if (stock_name, strategy_name) in t0_best:
         return {
             "buy_timing": "T+0尾盘",
@@ -937,6 +959,8 @@ def print_strategy_results(strategy_name: str, results: List[Dict]):
             print(
                 f"       RSI={r.get('rsi', 0):.1f}({rsi_cond}), 连跌={r.get('consecutive_down', 0)}天({cons_cond})"
             )
+            if r.get("name") == "川润股份" and r.get("buy_signal"):
+                print(f"       [川润提示] 同时参考T+0/T+4卖出(胜率76.5%)")
         elif r.get("strategy") == Strategy5_Momentum.NAME:
             signals = r.get("triggered_signals", [])
             print(
