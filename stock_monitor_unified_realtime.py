@@ -781,6 +781,7 @@ class Strategy8_DeepDrop:
     STOCKS = [
         {"code": "300499.SZ", "name": "高澜股份", "sina_code": "sz300499"},
         {"code": "002272.SZ", "name": "川润股份", "sina_code": "sz002272"},
+        {"code": "600418.SH", "name": "江淮汽车", "sina_code": "sh600418"},
     ]
 
     @classmethod
@@ -802,8 +803,8 @@ class Strategy8_DeepDrop:
 
         # 信号A: 5日跌>5% & RSI<40 & 当日涨, T+1/T+4
         signal_a = ret5d < -5 and pd.notna(rsi14) and rsi14 < 40 and today_pct > 0
-        # 信号B: 5日跌>10%, T+0/T+5 (仅高澜)
-        signal_b = ret5d < -10 and stock["name"] == "高澜股份"
+        # 信号B: 5日跌>10% (高澜T+0/T+5, 江淮T+1/T+6)
+        signal_b = ret5d < -10 and stock["name"] in ("高澜股份", "江淮汽车")
 
         signals = []
         if signal_a:
@@ -857,6 +858,7 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("拓日新能", "RSI+连跌中等信号"): 85.7,
         ("拓日新能", "多因子评分超卖"): 86.4,
         ("高澜股份", "深跌反弹"): 81.8,
+        ("江淮汽车", "深跌反弹"): 76.9,
     }
     return win_rates.get((stock_name, strategy_name), 0.0)
 
