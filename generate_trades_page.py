@@ -252,7 +252,7 @@ def check_s7(df, idx, name):
 
 
 def check_s8a(df, idx, name):
-    """深跌反弹-5日跌>5%&RSI<40&当日涨 (高澜专用, T+0/T+4)"""
+    """深跌反弹-5日跌>5%&RSI<40&当日涨"""
     if idx < 60: return False
     s = df.iloc[:idx+1].copy()
     ret5 = (s["close"].iloc[-1] / s["close"].iloc[-6] - 1) * 100 if len(s) >= 6 else 0
@@ -262,7 +262,7 @@ def check_s8a(df, idx, name):
 
 
 def check_s8b(df, idx, name):
-    """深跌反弹-5日跌>10% (高澜专用, T+0/T+5)"""
+    """深跌反弹-5日跌>10%"""
     if idx < 10: return False
     s = df.iloc[:idx+1]
     ret5 = (s["close"].iloc[-1] / s["close"].iloc[-6] - 1) * 100 if len(s) >= 6 else 0
@@ -280,6 +280,9 @@ T0_BEST = {
     ("英维克","KDJ超卖反弹"),
     ("高澜股份","深跌反弹(跌5%+RSI+涨)"),
     ("高澜股份","深跌反弹(跌10%)"),
+    ("爱乐达","RSI+布林带均值回归"),
+    ("爱乐达","深跌反弹(跌5%+RSI+涨)"),
+    ("爱乐达","深跌反弹(跌10%)"),
 }
 
 def backtest(df, name, strategy, func, start, custom_timing=None):
@@ -382,6 +385,12 @@ COMBOS = [
     ("深跌反弹(跌10%)江淮", "#D35400", check_s8b, [
         ("600418.SH", "江淮汽车"),
     ]),  # T+1/T+6 (默认, 不在T0_BEST中)
+    ("深跌反弹(跌5%+RSI+涨)爱乐达", "#D35400", check_s8a, [
+        ("300696.SZ", "爱乐达"),
+    ], (0, 3)),  # 爱乐达 T+0/T+3开盘卖 (盈亏比4.74)
+    ("深跌反弹(跌10%)爱乐达", "#D35400", check_s8b, [
+        ("300696.SZ", "爱乐达"),
+    ]),  # T+0/T+5 via T0_BEST (100%胜率)
 ]
 
 
