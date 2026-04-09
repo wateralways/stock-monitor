@@ -782,6 +782,7 @@ class Strategy8_DeepDrop:
         {"code": "300499.SZ", "name": "高澜股份", "sina_code": "sz300499"},
         {"code": "002272.SZ", "name": "川润股份", "sina_code": "sz002272"},
         {"code": "600418.SH", "name": "江淮汽车", "sina_code": "sh600418"},
+        {"code": "300696.SZ", "name": "爱乐达", "sina_code": "sz300696"},
     ]
 
     @classmethod
@@ -803,8 +804,8 @@ class Strategy8_DeepDrop:
 
         # 信号A: 5日跌>5% & RSI<40 & 当日涨, T+1/T+4
         signal_a = ret5d < -5 and pd.notna(rsi14) and rsi14 < 40 and today_pct > 0
-        # 信号B: 5日跌>10% (高澜T+0/T+5, 江淮T+1/T+6)
-        signal_b = ret5d < -10 and stock["name"] in ("高澜股份", "江淮汽车")
+        # 信号B: 5日跌>10% (高澜T+0/T+5, 江淮T+1/T+6, 爱乐达T+0/T+5)
+        signal_b = ret5d < -10 and stock["name"] in ("高澜股份", "江淮汽车", "爱乐达")
 
         signals = []
         if signal_a:
@@ -859,6 +860,7 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("拓日新能", "多因子评分超卖"): 86.4,
         ("高澜股份", "深跌反弹"): 81.8,
         ("江淮汽车", "深跌反弹"): 76.9,
+        ("爱乐达", "深跌反弹"): 73.7,
     }
     return win_rates.get((stock_name, strategy_name), 0.0)
 
@@ -876,6 +878,8 @@ def get_trade_timing(stock_name: str, strategy_name: str) -> Dict:
         ("拓日新能", "多因子评分超卖"),
         ("英维克", "KDJ超卖反弹"),
         ("高澜股份", "深跌反弹"),  # 两个子信号都是T+0买
+        ("爱乐达", "RSI+布林带均值回归"),
+        ("爱乐达", "深跌反弹"),  # 8A: T+0/T+3开盘卖, 8B: T+0/T+5尾盘卖
     }
     # 特殊时机：川润动量T+0/T+4，川润深跌反弹T+1/T+4
     t4_sell = {
