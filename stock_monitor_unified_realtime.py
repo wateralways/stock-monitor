@@ -210,6 +210,7 @@ class Strategy1_RSI_Bollinger:
     STOCKS = [
         {"code": "300696.SZ", "name": "爱乐达", "sina_code": "sz300696"},
         {"code": "000697.SZ", "name": "ST炼石", "sina_code": "sz000697"},
+        {"code": "002928.SZ", "name": "华夏航空", "sina_code": "sz002928"},
     ]
 
     @classmethod
@@ -425,6 +426,8 @@ class Strategy4_RSI_ConsecutiveDown:
         "000697.SZ": {"name": "ST炼石", "sina_code": "sz000697"},
         "300499.SZ": {"name": "高澜股份", "sina_code": "sz300499"},
         "002218.SZ": {"name": "拓日新能", "sina_code": "sz002218"},
+        "603912.SH": {"name": "佳力图", "sina_code": "sh603912"},
+        "000682.SZ": {"name": "东方电子", "sina_code": "sz000682"},
     }
 
     @classmethod
@@ -442,7 +445,7 @@ class Strategy4_RSI_ConsecutiveDown:
         )
         # 扬农化工和拓日新能用固定阈值，其他用自适应
         ap = AdaptiveParams.from_df(df)
-        if stock_info["name"] in ("扬农化工", "拓日新能"):
+        if stock_info["name"] in ("扬农化工", "拓日新能", "佳力图"):
             rsi_th = 35
         else:
             rsi_th = ap["rsi_consec"]
@@ -624,6 +627,7 @@ class Strategy6_ScoreModel:
     NAME = "多因子评分超卖"
     STOCKS = [
         {"code": "002218.SZ", "name": "拓日新能", "sina_code": "sz002218"},
+        {"code": "300572.SZ", "name": "安车检测", "sina_code": "sz300572"},
     ]
     SCORE_THRESHOLD = 50
 
@@ -783,6 +787,8 @@ class Strategy8_DeepDrop:
         {"code": "002272.SZ", "name": "川润股份", "sina_code": "sz002272"},
         {"code": "600418.SH", "name": "江淮汽车", "sina_code": "sh600418"},
         {"code": "300696.SZ", "name": "爱乐达", "sina_code": "sz300696"},
+        {"code": "300572.SZ", "name": "安车检测", "sina_code": "sz300572"},
+        {"code": "688223.SH", "name": "晶科能源", "sina_code": "sh688223"},
     ]
 
     @classmethod
@@ -804,8 +810,8 @@ class Strategy8_DeepDrop:
 
         # 信号A: 5日跌>5% & RSI<40 & 当日涨, T+1/T+4
         signal_a = ret5d < -5 and pd.notna(rsi14) and rsi14 < 40 and today_pct > 0
-        # 信号B: 5日跌>10% (高澜T+0/T+5, 江淮T+1/T+6, 爱乐达T+0/T+5)
-        signal_b = ret5d < -10 and stock["name"] in ("高澜股份", "江淮汽车", "爱乐达")
+        # 信号B: 5日跌>10% (高澜T+0/T+5, 江淮T+1/T+6, 爱乐达T+0/T+5, 安车检测T+1/T+6, 晶科能源T+0/T+4)
+        signal_b = ret5d < -10 and stock["name"] in ("高澜股份", "江淮汽车", "爱乐达", "安车检测", "晶科能源")
 
         signals = []
         if signal_a:
@@ -861,6 +867,12 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("高澜股份", "深跌反弹"): 81.8,
         ("江淮汽车", "深跌反弹"): 76.9,
         ("爱乐达", "深跌反弹"): 73.7,
+        ("华夏航空", "RSI+布林带均值回归"): 83.3,
+        ("佳力图", "RSI+连跌中等信号"): 78.6,
+        ("东方电子", "RSI+连跌中等信号"): 76.9,
+        ("安车检测", "多因子评分超卖"): 85.2,
+        ("安车检测", "深跌反弹"): 75.0,
+        ("晶科能源", "深跌反弹"): 85.7,
     }
     return win_rates.get((stock_name, strategy_name), 0.0)
 
@@ -880,12 +892,27 @@ def get_trade_timing(stock_name: str, strategy_name: str) -> Dict:
         ("高澜股份", "深跌反弹"),  # 两个子信号都是T+0买
         ("爱乐达", "RSI+布林带均值回归"),
         ("爱乐达", "深跌反弹"),  # 8A: T+0/T+3开盘卖, 8B: T+0/T+5尾盘卖
+        ("华夏航空", "RSI+布林带均值回归"),  # T+0/T+5
+        ("东方电子", "RSI+连跌中等信号"),  # T+0/T+5
+        ("晶科能源", "深跌反弹"),  # 8A: T+0/T+4, 8B: T+0/T+4
     }
-    # 特殊时机：川润动量T+0/T+4，川润深跌反弹T+1/T+4
+    # 特殊时机：川润动量T+0/T+4，川润深跌反弹T+1/T+4，晶科能源深跌T+0/T+4
     t4_sell = {
         ("川润股份", "动量策略"),
         ("川润股份", "深跌反弹"),
+        ("晶科能源", "深跌反弹"),
     }
+    # 特殊时机：佳力图RSI+连跌 T+1/T+5
+    t1_t5 = {
+        ("佳力图", "RSI+连跌中等信号"),
+    }
+    if (stock_name, strategy_name) in t1_t5:
+        return {
+            "buy_timing": "T+1开盘",
+            "sell_timing": "T+5尾盘",
+            "buy_desc": "次日开盘买入",
+            "sell_desc": "最晚第5个交易日尾盘卖出",
+        }
     if (stock_name, strategy_name) in t4_sell:
         if (stock_name, strategy_name) in t0_best:
             return {
