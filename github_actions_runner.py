@@ -539,8 +539,8 @@ def generate_html(data):
             </div>
         </div>
         
-        {sell_html}
         {rec_html}
+        {sell_html}
         {strategies_html}
         
         <div class="footer">
