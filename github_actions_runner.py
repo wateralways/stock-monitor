@@ -254,6 +254,54 @@ def generate_html(data):
             {rec_content}
         </div>"""
 
+    # 读取卖出提醒
+    sell_alerts = []
+    try:
+        import json as _j, os as _os
+        pending_file = "docs/pending_sells.json"
+        if _os.path.exists(pending_file):
+            with open(pending_file, "r", encoding="utf-8") as f:
+                sell_alerts = _j.load(f).get("alerts", [])
+    except Exception as e:
+        print(f"[WARN] Failed to load pending_sells.json: {e}")
+
+    sell_html = ""
+    if sell_alerts:
+        today_items = [a for a in sell_alerts if a["days_until_sell"] == 0]
+        tomorrow_items = [a for a in sell_alerts if a["days_until_sell"] == 1]
+
+        def render_alert(a):
+            pnl = a["float_pnl"]
+            pnl_class = "up" if pnl > 0 else ("down" if pnl < 0 else "")
+            pnl_sign = "+" if pnl > 0 else ""
+            return f"""
+                <div class="sell-item">
+                    <div class="sell-header">
+                        <span class="sell-stock">{a["stock"]}</span>
+                        <span class="sell-pnl {pnl_class}">{pnl_sign}{pnl:.2f}%</span>
+                    </div>
+                    <div class="sell-strategy">{a["strategy"]} · {a["sell_timing"]}</div>
+                    <div class="sell-detail">买入 {a["buy_date"]} @ ¥{a["buy_price"]:.2f} → 现价 ¥{a["current_price"]:.2f}</div>
+                </div>"""
+
+        blocks = []
+        if today_items:
+            blocks.append(f"""<div class="sell-group">
+                <div class="sell-group-title">⚡ 今日卖出 ({len(today_items)})</div>
+                {"".join(render_alert(a) for a in today_items)}
+            </div>""")
+        if tomorrow_items:
+            blocks.append(f"""<div class="sell-group">
+                <div class="sell-group-title">⏰ 明日卖出 ({len(tomorrow_items)})</div>
+                {"".join(render_alert(a) for a in tomorrow_items)}
+            </div>""")
+
+        sell_html = f"""
+        <div class="sell-section">
+            <div class="sell-title">[卖出提醒]</div>
+            {"".join(blocks)}
+        </div>"""
+
     buy_value_class = "buy" if summary["total_buy"] > 0 else ""
     signal_ratio = summary["total_buy"] / max(summary["total_analyzed"], 1) * 100
 
@@ -415,6 +463,53 @@ def generate_html(data):
         }}
         .rec-strategy {{ font-size: 18px; opacity: 0.95; margin-bottom: 10px; }}
         .rec-timing {{ font-size: 16px; opacity: 0.9; }}
+        .sell-section {{
+            background: linear-gradient(135deg, #f39c12, #d35400);
+            border-radius: 20px;
+            padding: 25px;
+            margin-bottom: 20px;
+            color: white;
+            box-shadow: 0 10px 40px rgba(243, 156, 18, 0.3);
+        }}
+        .sell-title {{
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 18px;
+            text-align: center;
+        }}
+        .sell-group {{ margin-bottom: 18px; }}
+        .sell-group:last-child {{ margin-bottom: 0; }}
+        .sell-group-title {{
+            font-size: 17px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            opacity: 0.95;
+        }}
+        .sell-item {{
+            background: rgba(255,255,255,0.22);
+            border-radius: 14px;
+            padding: 16px 18px;
+            margin-bottom: 10px;
+        }}
+        .sell-item:last-child {{ margin-bottom: 0; }}
+        .sell-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }}
+        .sell-stock {{ font-size: 22px; font-weight: 700; }}
+        .sell-pnl {{
+            font-size: 18px;
+            font-weight: 700;
+            background: rgba(255,255,255,0.3);
+            padding: 4px 12px;
+            border-radius: 14px;
+        }}
+        .sell-pnl.up {{ background: rgba(231,76,60,0.7); }}
+        .sell-pnl.down {{ background: rgba(39,174,96,0.7); }}
+        .sell-strategy {{ font-size: 15px; opacity: 0.95; margin-bottom: 4px; }}
+        .sell-detail {{ font-size: 14px; opacity: 0.88; }}
         .no-signal {{ text-align: center; padding: 40px; font-size: 22px; opacity: 0.9; font-weight: 600; }}
         .empty-state {{ text-align: center; padding: 40px 20px; color: #999; }}
         .footer {{ text-align: center; padding: 30px 20px; color: rgba(255,255,255,0.7); font-size: 13px; }}
@@ -444,6 +539,7 @@ def generate_html(data):
             </div>
         </div>
         
+        {sell_html}
         {rec_html}
         {strategies_html}
         

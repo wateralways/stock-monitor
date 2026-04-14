@@ -787,6 +787,84 @@ def main():
         f.write(html)
     print(f"已生成 docs/trades.html ({len(html)} bytes)")
 
+    # 计算卖出提醒 (今日/明日到期)
+    alerts = compute_sell_alerts(cache)
+    import json as _j
+    with open("docs/pending_sells.json", "w", encoding="utf-8") as f:
+        _j.dump({
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "alerts": alerts,
+        }, f, ensure_ascii=False, indent=2)
+    print(f"已生成 docs/pending_sells.json ({len(alerts)}条卖出提醒)")
+    for a in alerts:
+        print(f"  [{a['status']}] {a['stock']} · {a['strategy']}  "
+              f"买入{a['buy_date']}@{a['buy_price']}  现价{a['current_price']} ({a['float_pnl']:+.2f}%)")
+
+
+def compute_sell_alerts(cache):
+    """扫描历史买入信号，筛选今日/明日到期的持仓"""
+    alerts = []
+    for combo in COMBOS:
+        strategy_name, color, func, stocks = combo[0], combo[1], combo[2], combo[3]
+        custom_timing = combo[4] if len(combo) > 4 else None
+        for code, name in stocks:
+            if code not in cache:
+                continue
+            df = cache[code]
+            today_idx = len(df) - 1
+            if today_idx < 60:
+                continue
+            # 时机
+            if custom_timing:
+                buy_off, sell_off = custom_timing
+            else:
+                buy_off = 0 if (name, strategy_name) in T0_BEST else 1
+                sell_off = 5 if buy_off == 0 else 6
+            # 扫描过去15天内的买入信号
+            for offset in range(0, 16):
+                sig_idx = today_idx - offset
+                if sig_idx < 60:
+                    break
+                try:
+                    if not func(df, sig_idx, name):
+                        continue
+                except Exception:
+                    continue
+                expected_sell_idx = sig_idx + sell_off
+                days_until_sell = expected_sell_idx - today_idx
+                # 只关心今日(0) 或 明日(1) 到期的
+                if days_until_sell not in (0, 1):
+                    continue
+                # 计算买入价
+                buy_idx = sig_idx + buy_off
+                if buy_idx >= len(df):
+                    continue  # 还没到买入日 (不应该发生在这里)
+                buy_price = (df.iloc[sig_idx]["close"] if buy_off == 0
+                             else df.iloc[buy_idx]["open"])
+                current_price = df.iloc[today_idx]["close"]
+                float_pnl = (current_price - buy_price) / buy_price * 100
+                alerts.append({
+                    "stock": name,
+                    "code": code,
+                    "strategy": strategy_name,
+                    "color": color,
+                    "signal_date": df.iloc[sig_idx]["trade_date"].strftime("%Y-%m-%d"),
+                    "buy_date": df.iloc[buy_idx]["trade_date"].strftime("%Y-%m-%d"),
+                    "buy_price": round(float(buy_price), 2),
+                    "current_price": round(float(current_price), 2),
+                    "float_pnl": round(float(float_pnl), 2),
+                    "days_until_sell": days_until_sell,
+                    "status": "今日卖出" if days_until_sell == 0 else "明日卖出",
+                    "sell_timing": f"T+{buy_off}/T+{sell_off}",
+                })
+    # 去重 (同一股票同一策略可能多次命中) - 保留最早买入的
+    dedup = {}
+    for a in alerts:
+        key = (a["stock"], a["strategy"])
+        if key not in dedup or a["buy_date"] < dedup[key]["buy_date"]:
+            dedup[key] = a
+    return sorted(dedup.values(), key=lambda x: (x["days_until_sell"], x["stock"]))
+
 
 if __name__ == "__main__":
     main()
