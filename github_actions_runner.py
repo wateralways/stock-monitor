@@ -63,6 +63,7 @@ def parse_output(output):
         {"name": "多因子评分超卖", "short": "策略6", "color": "#8E44AD"},
         {"name": "KDJ超卖反弹", "short": "策略7", "color": "#16A085"},
         {"name": "深跌反弹", "short": "策略8", "color": "#D35400"},
+        {"name": "底部抬高+温和放量", "short": "策略9", "color": "#2C7873"},
     ]
 
     data = {
@@ -88,7 +89,7 @@ def parse_output(output):
     in_summary = False
 
     for line in lines:
-        strategy_match = re.search(r"\[\D*([12345678])\]", line)
+        strategy_match = re.search(r"\[\D*([1-9])\]", line)
         if strategy_match:
             strategy_num = int(strategy_match.group(1))
             current_strategy_idx = strategy_num - 1
@@ -585,6 +586,17 @@ def generate_strategy_doc():
             "timing": "晶科T+0/T+4 | 爱乐达信号A T+0/T+3 | 安车检测T+1/T+6 | 其他信号A T+0/T+4 | 其他信号B T+0/T+5(江淮T+1/T+6)",
             "description": "深跌后的超跌反弹策略。晶科能源信号A 85.7%(7笔,T+0/T+4)、信号B 78.6%(14笔,T+0/T+4,平均+3.80%)；安车检测信号A 75.0%(8笔,T+1/T+6,平均+8.01%)。信号A适用全部6只股票，信号B仅限高澜/江淮/爱乐达/安车检测/晶科能源。",
         },
+        {
+            "id": 9,
+            "name": "底部抬高+温和放量",
+            "color": "#2C7873",
+            "stocks": ["川润股份", "裕同科技", "拓日新能", "ST炼石"],
+            "win_rates": {"川润股份": "75.0%(T+9)", "裕同科技": "100%(T+9)", "拓日新能": "64.7%(T+7)", "ST炼石": "66.7%(T+5)"},
+            "entry": "近5日低点 > 近15日低点(底部抬高) 且 近3日量均>近10日量均*1.2(温和放量) 且 RSI14在45-65(中性偏多) 且 今日收阳",
+            "exit": "按差异化持仓期到期卖出",
+            "timing": "川润/裕同 T+1/T+9尾盘 | 拓日新能 T+1/T+7尾盘 | ST炼石 T+1/T+5尾盘",
+            "description": "捕捉横盘震荡后加速上涨的机会。区别于深跌反弹(抓超跌)，本策略识别'反弹后→横盘酝酿→温和放量突破'的形态。川润+7.28%/笔(8笔87.5%大涨)，裕同+7.20%/笔(7笔100%大涨)，拓日+8.05%/笔(17笔64.7%大涨)，ST炼石+4.13%/笔(6笔66.7%大涨)。不同个股持仓期差异化配置：趋势慢股拉长到T+9，短线股用T+5。",
+        },
     ]
 
     html = """<!DOCTYPE html>
@@ -851,6 +863,7 @@ def main():
                         {"name": "多因子评分超卖", "short": "策略6", "color": "#8E44AD"},
                         {"name": "KDJ超卖反弹", "short": "策略7", "color": "#16A085"},
                         {"name": "深跌反弹", "short": "策略8", "color": "#D35400"},
+                        {"name": "底部抬高+温和放量", "short": "策略9", "color": "#2C7873"},
                     ]
                 ],
                 "summary": {"total_analyzed": 0, "total_buy": 0, "buy_list": []},

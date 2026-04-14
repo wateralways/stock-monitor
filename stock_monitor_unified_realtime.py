@@ -832,6 +832,77 @@ class Strategy8_DeepDrop:
         }
 
 
+class Strategy9_HigherLowVolume:
+    NAME = "底部抬高+温和放量"
+    STOCKS = [
+        {"code": "002272.SZ", "name": "川润股份", "sina_code": "sz002272"},
+        {"code": "002831.SZ", "name": "裕同科技", "sina_code": "sz002831"},
+        {"code": "002218.SZ", "name": "拓日新能", "sina_code": "sz002218"},
+        {"code": "000697.SZ", "name": "ST炼石", "sina_code": "sz000697"},
+    ]
+
+    @classmethod
+    def analyze(cls, stock: Dict) -> Optional[Dict]:
+        df = DataFetcher.fetch_history_data(stock["code"], days=60)
+        if df is None or len(df) < 30:
+            return None
+        rt = DataFetcher.fetch_realtime_sina(stock["sina_code"])
+        if rt is None:
+            return None
+        df = DataFetcher.merge_realtime_data(df, rt)
+        df["rsi"] = TechnicalIndicators.calculate_rsi(df["close"], 14)
+        latest = df.iloc[-1]
+        today_pct = (rt["close"] - rt["pre_close"]) / rt["pre_close"] * 100
+
+        # 底部抬高: 近5日低点 > 近15日低点
+        low5 = df["low"].iloc[-5:].min()
+        low15 = df["low"].iloc[-15:].min()
+        higher_low = low5 > low15
+
+        # 温和放量: 近3日量均 > 近10日量均 * 1.2
+        vol3 = df["vol"].iloc[-3:].mean()
+        vol10 = df["vol"].iloc[-10:].mean()
+        vol_expand = vol3 > vol10 * 1.2 if vol10 > 0 else False
+        vol_ratio = vol3 / vol10 if vol10 > 0 else 0
+
+        # RSI在中性偏多区 (45-65)
+        rsi14 = latest["rsi"]
+        rsi_ok = pd.notna(rsi14) and 45 <= rsi14 <= 65
+
+        # 今日收阳
+        today_bullish = rt["close"] > rt["open"]
+
+        buy_signal = higher_low and vol_expand and rsi_ok and today_bullish
+
+        conditions = []
+        if higher_low:
+            conditions.append(f"底部抬高(5日低{low5:.2f}>15日低{low15:.2f})")
+        if vol_expand:
+            conditions.append(f"温和放量({vol_ratio:.2f}x)")
+        if rsi_ok:
+            conditions.append(f"RSI{rsi14:.0f}中性")
+        if today_bullish:
+            conditions.append(f"收阳")
+
+        return {
+            "strategy": cls.NAME,
+            "name": stock["name"],
+            "code": stock["code"],
+            "price": rt["close"],
+            "pct_chg": today_pct,
+            "rsi": rsi14,
+            "low5": low5,
+            "low15": low15,
+            "vol_ratio_3_10": vol_ratio,
+            "higher_low": higher_low,
+            "vol_expand": vol_expand,
+            "rsi_ok": rsi_ok,
+            "today_bullish": today_bullish,
+            "conditions": conditions,
+            "buy_signal": buy_signal,
+        }
+
+
 def load_positions() -> List:
     if os.path.exists(POSITION_FILE):
         with open(POSITION_FILE, "r", encoding="utf-8") as f:
@@ -873,6 +944,10 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("安车检测", "多因子评分超卖"): 85.2,
         ("安车检测", "深跌反弹"): 75.0,
         ("晶科能源", "深跌反弹"): 85.7,
+        ("川润股份", "底部抬高+温和放量"): 75.0,
+        ("裕同科技", "底部抬高+温和放量"): 100.0,
+        ("拓日新能", "底部抬高+温和放量"): 64.7,
+        ("ST炼石", "底部抬高+温和放量"): 66.7,
     }
     return win_rates.get((stock_name, strategy_name), 0.0)
 
@@ -902,9 +977,19 @@ def get_trade_timing(stock_name: str, strategy_name: str) -> Dict:
         ("川润股份", "深跌反弹"),
         ("晶科能源", "深跌反弹"),
     }
-    # 特殊时机：佳力图RSI+连跌 T+1/T+5
+    # 特殊时机：佳力图RSI+连跌 T+1/T+5, ST炼石 底部抬高 T+1/T+5
     t1_t5 = {
         ("佳力图", "RSI+连跌中等信号"),
+        ("ST炼石", "底部抬高+温和放量"),
+    }
+    # 特殊时机：拓日新能 底部抬高 T+1/T+7
+    t1_t7 = {
+        ("拓日新能", "底部抬高+温和放量"),
+    }
+    # 特殊时机：川润/裕同 底部抬高 T+1/T+9
+    t1_t9 = {
+        ("川润股份", "底部抬高+温和放量"),
+        ("裕同科技", "底部抬高+温和放量"),
     }
     if (stock_name, strategy_name) in t1_t5:
         return {
@@ -912,6 +997,20 @@ def get_trade_timing(stock_name: str, strategy_name: str) -> Dict:
             "sell_timing": "T+5尾盘",
             "buy_desc": "次日开盘买入",
             "sell_desc": "最晚第5个交易日尾盘卖出",
+        }
+    if (stock_name, strategy_name) in t1_t7:
+        return {
+            "buy_timing": "T+1开盘",
+            "sell_timing": "T+7尾盘",
+            "buy_desc": "次日开盘买入",
+            "sell_desc": "最晚第7个交易日尾盘卖出",
+        }
+    if (stock_name, strategy_name) in t1_t9:
+        return {
+            "buy_timing": "T+1开盘",
+            "sell_timing": "T+9尾盘",
+            "buy_desc": "次日开盘买入",
+            "sell_desc": "最晚第9个交易日尾盘卖出",
         }
     if (stock_name, strategy_name) in t4_sell:
         if (stock_name, strategy_name) in t0_best:
@@ -1013,6 +1112,15 @@ def print_strategy_results(strategy_name: str, results: List[Dict]):
                 f"       J={r.get('j_value', 0):.1f}, K={r.get('k_value', 0):.1f}, "
                 f"涨幅={r.get('pct_chg', 0):+.2f}%"
             )
+        elif r.get("strategy") == Strategy9_HigherLowVolume.NAME:
+            rsi_s = f"{r.get('rsi', 0):.1f}" if pd.notna(r.get('rsi')) else "-"
+            print(
+                f"       RSI={rsi_s}, 5日低={r.get('low5', 0):.2f}, 15日低={r.get('low15', 0):.2f}, "
+                f"量比(3/10)={r.get('vol_ratio_3_10', 0):.2f}"
+            )
+            conditions = r.get("conditions", [])
+            if conditions:
+                print(f"       满足: {', '.join(conditions)}")
         elif r.get("strategy") == Strategy8_DeepDrop.NAME:
             sigs = r.get("signals", [])
             rsi_s = f"{r.get('rsi', 0):.1f}" if pd.notna(r.get('rsi')) else "-"
@@ -1228,6 +1336,23 @@ def main():
             print("失败")
     all_results[Strategy8_DeepDrop.NAME] = results
     print_strategy_results(Strategy8_DeepDrop.NAME, results)
+
+    print("\n[策略9] 底部抬高+温和放量")
+    results = []
+    for stock in Strategy9_HigherLowVolume.STOCKS:
+        print(f"  分析 {stock['name']}...", end=" ")
+        r = Strategy9_HigherLowVolume.analyze(stock)
+        if r:
+            results.append(r)
+            win_rate = get_history_win_rate(stock["name"], "底部抬高+温和放量")
+            timing = get_trade_timing(stock["name"], "底部抬高+温和放量")
+            r["win_rate"] = win_rate
+            r["timing"] = timing
+            print(f"完成 - {'买入信号' if r.get('buy_signal') else '无信号'}")
+        else:
+            print("失败")
+    all_results[Strategy9_HigherLowVolume.NAME] = results
+    print_strategy_results(Strategy9_HigherLowVolume.NAME, results)
 
     print_summary_with_timing(all_results)
 
