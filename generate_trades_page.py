@@ -724,18 +724,29 @@ def main():
     cache = {}
     for code in sorted(all_codes):
         print(f"  {code}...", end=" ", flush=True)
-        try:
-            df = pro.daily(ts_code=code, start_date=data_start)
-            if df is not None and not df.empty:
-                df = df.sort_values("trade_date").reset_index(drop=True)
-                df["trade_date"] = pd.to_datetime(df["trade_date"])
-                cache[code] = df
-                print(f"OK ({len(df)}条)")
-            else:
-                print("EMPTY")
-        except Exception as e:
-            print(f"ERROR: {e}")
-        time.sleep(0.3)
+        # Tushare限流: 每分钟50次, 间隔1.3秒+重试机制
+        retries = 3
+        for attempt in range(retries):
+            try:
+                df = pro.daily(ts_code=code, start_date=data_start)
+                if df is not None and not df.empty:
+                    df = df.sort_values("trade_date").reset_index(drop=True)
+                    df["trade_date"] = pd.to_datetime(df["trade_date"])
+                    cache[code] = df
+                    print(f"OK ({len(df)}条)")
+                else:
+                    print("EMPTY")
+                break
+            except Exception as e:
+                err_msg = str(e)
+                if "每分钟" in err_msg or "rate" in err_msg.lower():
+                    if attempt < retries - 1:
+                        print(f"限流,等待15秒重试({attempt+1}/{retries})...", end=" ", flush=True)
+                        time.sleep(15)
+                        continue
+                print(f"ERROR: {err_msg[:80]}")
+                break
+        time.sleep(1.3)
 
     # 逐组合处理
     print("\n处理交易记录...")
