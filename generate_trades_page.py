@@ -867,6 +867,77 @@ def compute_sell_alerts(cache):
                     "status": "今日卖出" if days_until_sell == 0 else "明日卖出",
                     "sell_timing": f"T+{buy_off}/T+{sell_off}",
                 })
+    # 合并手动交易 (如果回测找不到的话)
+    saved = load_saved_trades()
+    for combo_key, trades_list in saved.items():
+        for t in trades_list:
+            if not t.get("manual") or not t.get("pending"):
+                continue
+            code, strategy = combo_key.split("|", 1)
+            # 找股票名
+            stock_name = None
+            for combo in COMBOS:
+                if combo[0] != strategy:
+                    continue
+                for c, n in combo[3]:
+                    if c == code:
+                        stock_name = n
+                        break
+                if stock_name:
+                    break
+            if not stock_name:
+                continue
+            if code not in cache:
+                continue
+            df = cache[code]
+            today_idx = len(df) - 1
+            buy_date = pd.to_datetime(t["buy"])
+            # 找买入日在df中的位置
+            buy_idx_arr = df.index[df["trade_date"] == buy_date]
+            if len(buy_idx_arr) == 0:
+                continue
+            buy_idx = int(buy_idx_arr[0])
+            # 找该策略的sell_off
+            custom_timing = None
+            for combo in COMBOS:
+                if combo[0] == strategy:
+                    for c, _ in combo[3]:
+                        if c == code:
+                            custom_timing = combo[4] if len(combo) > 4 else None
+                            break
+                    break
+            if custom_timing:
+                buy_off, sell_off = custom_timing
+            else:
+                buy_off = 0 if (stock_name, strategy) in T0_BEST else 1
+                sell_off = 5 if buy_off == 0 else 6
+            # 手动交易的 signal_idx 通常等于 buy_idx - buy_off
+            signal_idx = buy_idx - buy_off
+            expected_sell_idx = signal_idx + sell_off
+            days_until_sell = expected_sell_idx - today_idx
+            if days_until_sell not in (0, 1):
+                continue
+            # 已被回测找到的(同股票同策略)跳过
+            if any(a["stock"] == stock_name and a["strategy"] == strategy for a in alerts):
+                continue
+            current_price = df.iloc[today_idx]["close"]
+            float_pnl = (current_price - t["bp"]) / t["bp"] * 100
+            alerts.append({
+                "stock": stock_name,
+                "code": code,
+                "strategy": strategy,
+                "color": "#8E44AD",  # 默认色 (S6色)
+                "signal_date": t["signal"],
+                "buy_date": t["buy"],
+                "buy_price": t["bp"],
+                "current_price": round(float(current_price), 2),
+                "float_pnl": round(float(float_pnl), 2),
+                "days_until_sell": days_until_sell,
+                "status": "今日卖出" if days_until_sell == 0 else "明日卖出",
+                "sell_timing": f"T+{buy_off}/T+{sell_off}",
+                "manual": True,
+            })
+
     # 去重 (同一股票同一策略可能多次命中) - 保留最早买入的
     dedup = {}
     for a in alerts:
