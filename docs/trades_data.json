@@ -4359,6 +4359,18 @@
       "pnl": 22.69,
       "win": true,
       "pending": false
+    },
+    {
+      "signal": "2026-04-10",
+      "buy": "2026-04-10",
+      "sell": "持仓中",
+      "bp": 5.71,
+      "sp": 5.77,
+      "pnl": 1.05,
+      "win": null,
+      "pending": true,
+      "manual": true,
+      "note": "实时监控评分56触发, EOD回测只有46分未录入, 手动补录"
     }
   ],
   "002837.SZ|KDJ超卖反弹": [

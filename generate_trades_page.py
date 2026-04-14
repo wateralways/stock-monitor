@@ -746,9 +746,12 @@ def main():
                 trades = backtest(cache[code], name, strategy_name, func, start, custom_timing)
                 mode = "全量"
             else:
-                # 增量: 保留已完成的交易，只更新 pending 和检查新信号
+                # 增量: 保留已完成的交易 + 手动记录, 只更新 pending 和检查新信号
                 old_trades = saved[combo_key]
-                completed = [t for t in old_trades if not t.get("pending")]
+                # 手动交易始终保留 (即使是pending状态, 因为回测可能找不到对应信号)
+                manual_trades = [t for t in old_trades if t.get("manual")]
+                # 非手动 + 已完成的交易
+                completed = [t for t in old_trades if not t.get("pending") and not t.get("manual")]
                 last_signal = max((t["signal"] for t in old_trades), default=start)
 
                 # 从最后一个信号日往前10天开始检查（确保不遗漏）
@@ -759,12 +762,19 @@ def main():
                 # 跑新的回测获取新信号
                 new_trades = backtest(cache[code], name, strategy_name, func, check_start, custom_timing)
 
-                # 合并: 保留已完成的 + 用新数据覆盖 pending 和新信号
-                completed_sigs = set(t["signal"] for t in completed)
-                fresh = [t for t in new_trades if t["signal"] not in completed_sigs]
-                trades = completed + fresh
+                # 更新手动交易的 sp/pnl (如果仍在pending, 用最新价)
+                latest_price = cache[code].iloc[-1]["close"] if not cache[code].empty else 0
+                for mt in manual_trades:
+                    if mt.get("pending") and latest_price > 0:
+                        mt["sp"] = round(float(latest_price), 2)
+                        mt["pnl"] = round((latest_price - mt["bp"]) / mt["bp"] * 100, 2)
+
+                # 合并: 手动交易 + 已完成的 + 新信号 (排除已记录的信号日期)
+                existing_sigs = set(t["signal"] for t in manual_trades + completed)
+                fresh = [t for t in new_trades if t["signal"] not in existing_sigs]
+                trades = manual_trades + completed + fresh
                 trades.sort(key=lambda t: t["signal"])
-                mode = f"增量(+{len(fresh)}新)"
+                mode = f"增量(+{len(fresh)}新, {len(manual_trades)}手动)"
 
             # 统计
             closed = [t for t in trades if not t.get("pending")]
