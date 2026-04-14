@@ -275,21 +275,13 @@ def check_s9(df, idx, name):
     s = df.iloc[:idx+1]
     low5 = s["low"].iloc[-5:].min()
     low15 = s["low"].iloc[-15:].min()
+    if low5 <= low15: return False
     vol3 = s["vol"].iloc[-3:].mean()
     vol10 = s["vol"].iloc[-10:].mean()
-    rsi = calculate_rsi(s["close"], 14).iloc[-1]
-    l = s.iloc[-1]
-    # DEBUG: 英维克 2025-02 单独打印
-    if name == "英维克" and pd.to_datetime("2025-02-01") <= l["trade_date"] <= pd.to_datetime("2025-02-28"):
-        dstr = l["trade_date"].strftime("%Y-%m-%d")
-        ratio = vol3/vol10 if vol10>0 else 0
-        print(f"[S9-DEBUG {dstr}] low5={low5:.2f} low15={low15:.2f} hl={low5>low15} "
-              f"v3={vol3:.0f} v10={vol10:.0f} r={ratio:.2f} volok={ratio>1.2} "
-              f"rsi={rsi:.1f} rsiok={pd.notna(rsi) and 45<=rsi<=65} "
-              f"o={l['open']:.2f} c={l['close']:.2f} bull={l['close']>l['open']}")
-    if low5 <= low15: return False
     if vol10 <= 0 or vol3 < vol10 * 1.2: return False
+    rsi = calculate_rsi(s["close"], 14).iloc[-1]
     if pd.isna(rsi) or not (45 <= rsi <= 65): return False
+    l = s.iloc[-1]
     return l["close"] > l["open"]
 
 
@@ -725,7 +717,9 @@ def main():
         for code, _ in combo[3]:
             all_codes.add(code)
 
-    data_start = "20240901" if full_rerun else "20250101"
+    # 始终从2024-09-01开始拉取，保证新增combo在2025-01-01~02的信号也能被扫描到
+    # (idx=60 需要至少60个交易日预热，即2024-11起数据才够)
+    data_start = "20240901"
     print(f"\n获取数据 (起始: {data_start})...")
     cache = {}
     for code in sorted(all_codes):
