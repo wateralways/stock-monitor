@@ -839,6 +839,9 @@ class Strategy9_HigherLowVolume:
         {"code": "002831.SZ", "name": "裕同科技", "sina_code": "sz002831"},
         {"code": "002218.SZ", "name": "拓日新能", "sina_code": "sz002218"},
         {"code": "000697.SZ", "name": "ST炼石", "sina_code": "sz000697"},
+        {"code": "002928.SZ", "name": "华夏航空", "sina_code": "sz002928"},
+        {"code": "002837.SZ", "name": "英维克", "sina_code": "sz002837"},
+        {"code": "603912.SH", "name": "佳力图", "sina_code": "sh603912"},
     ]
 
     @classmethod
@@ -948,6 +951,9 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("裕同科技", "底部抬高+温和放量"): 100.0,
         ("拓日新能", "底部抬高+温和放量"): 64.7,
         ("ST炼石", "底部抬高+温和放量"): 66.7,
+        ("华夏航空", "底部抬高+温和放量"): 85.7,
+        ("英维克", "底部抬高+温和放量"): 80.0,
+        ("佳力图", "底部抬高+温和放量"): 70.0,
     }
     return win_rates.get((stock_name, strategy_name), 0.0)
 
@@ -982,15 +988,38 @@ def get_trade_timing(stock_name: str, strategy_name: str) -> Dict:
         ("佳力图", "RSI+连跌中等信号"),
         ("ST炼石", "底部抬高+温和放量"),
     }
+    # 特殊时机：华夏航空 底部抬高 T+1/T+6
+    t1_t6 = {
+        ("华夏航空", "底部抬高+温和放量"),
+    }
     # 特殊时机：拓日新能 底部抬高 T+1/T+7
     t1_t7 = {
         ("拓日新能", "底部抬高+温和放量"),
     }
-    # 特殊时机：川润/裕同 底部抬高 T+1/T+9
+    # 特殊时机：英维克 底部抬高 T+1/T+8
+    t1_t8 = {
+        ("英维克", "底部抬高+温和放量"),
+    }
+    # 特殊时机：川润/裕同/佳力图 底部抬高 T+1/T+9
     t1_t9 = {
         ("川润股份", "底部抬高+温和放量"),
         ("裕同科技", "底部抬高+温和放量"),
+        ("佳力图", "底部抬高+温和放量"),
     }
+    if (stock_name, strategy_name) in t1_t6:
+        return {
+            "buy_timing": "T+1开盘",
+            "sell_timing": "T+6尾盘",
+            "buy_desc": "次日开盘买入",
+            "sell_desc": "最晚第6个交易日尾盘卖出",
+        }
+    if (stock_name, strategy_name) in t1_t8:
+        return {
+            "buy_timing": "T+1开盘",
+            "sell_timing": "T+8尾盘",
+            "buy_desc": "次日开盘买入",
+            "sell_desc": "最晚第8个交易日尾盘卖出",
+        }
     if (stock_name, strategy_name) in t1_t5:
         return {
             "buy_timing": "T+1开盘",
