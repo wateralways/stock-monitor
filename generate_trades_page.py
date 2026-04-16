@@ -291,23 +291,6 @@ def check_s10(df, idx, name):
     return l["vol"] >= vm5 * 1.0 if vm5 > 0 else False
 
 
-def check_s11(df, idx, name):
-    """板块跟随加速: 近5日有大涨+今日温和跟涨"""
-    if idx < 30: return False
-    s = df.iloc[:idx+1]
-    r5 = s.iloc[-6:-1]
-    if len(r5) < 5: return False
-    pcts = (r5["close"] / r5["close"].shift(1) - 1) * 100
-    mx = pcts.max()
-    if pd.isna(mx) or mx < 5: return False
-    l = s.iloc[-1]
-    if l["close"] <= l["open"]: return False
-    vm5 = s["vol"].iloc[-6:-1].mean()
-    if vm5 <= 0 or not (vm5 * 0.8 < l["vol"] < vm5 * 2.5): return False
-    rsi = calculate_rsi(s["close"], 14).iloc[-1]
-    return pd.notna(rsi) and 50 <= rsi <= 70
-
-
 def check_s9(df, idx, name):
     """底部抬高+温和放量: 近5日低>近15日低, 3日量均>10日量均*1.2, RSI14 45-65, 收阳"""
     if idx < 30: return False
@@ -492,9 +475,6 @@ COMBOS = [
     ("N字突破(高澜)", "#6A4C93", check_s10, [
         ("300499.SZ", "高澜股份"),
     ], (1, 7)),  # T+1/T+7 (68.4%胜率, 平均+8.77%)
-    ("板块跟随加速(安车)", "#D4A017", check_s11, [
-        ("300572.SZ", "安车检测"),
-    ]),  # T+1/T+6 (默认, 78.6%胜率, 平均+2.71%)
 ]
 
 

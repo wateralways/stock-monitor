@@ -976,67 +976,6 @@ class Strategy10_NBreakout:
         }
 
 
-class Strategy11_SectorFollow:
-    """板块跟随加速: 近5日有单日大涨后今日温和跟涨, 捕捉趋势中继"""
-    NAME = "板块跟随加速"
-    STOCKS = [
-        {"code": "300572.SZ", "name": "安车检测", "sina_code": "sz300572"},
-    ]
-
-    @classmethod
-    def analyze(cls, stock: Dict) -> Optional[Dict]:
-        df = DataFetcher.fetch_history_data(stock["code"], days=40)
-        if df is None or len(df) < 30:
-            return None
-        rt = DataFetcher.fetch_realtime_sina(stock["sina_code"])
-        if rt is None:
-            return None
-        df = DataFetcher.merge_realtime_data(df, rt)
-        df["rsi"] = TechnicalIndicators.calculate_rsi(df["close"], 14)
-        today_pct = (rt["close"] - rt["pre_close"]) / rt["pre_close"] * 100
-
-        # 近5日内单日涨幅最大值 (不含今日)
-        recent5 = df.iloc[-6:-1]
-        if len(recent5) < 5:
-            return None
-        pct_chgs = (recent5["close"] / recent5["close"].shift(1) - 1) * 100
-        max_recent = pct_chgs.max()
-        surge_ok = pd.notna(max_recent) and max_recent >= 5
-
-        today_bullish = rt["close"] > rt["open"]
-        vol_ma5 = df["vol"].iloc[-6:-1].mean()
-        today_vol = df["vol"].iloc[-1]
-        vol_ok = vol_ma5 > 0 and vol_ma5 * 0.8 < today_vol < vol_ma5 * 2.5
-
-        rsi14 = df["rsi"].iloc[-1]
-        rsi_ok = pd.notna(rsi14) and 50 <= rsi14 <= 70
-
-        buy_signal = surge_ok and today_bullish and vol_ok and rsi_ok
-
-        conditions = []
-        if surge_ok:
-            conditions.append(f"近5日最大单日涨{max_recent:.1f}%")
-        if today_bullish:
-            conditions.append("收阳")
-        if vol_ok:
-            conditions.append(f"量比{today_vol/vol_ma5:.2f}(温和)")
-        if rsi_ok:
-            conditions.append(f"RSI{rsi14:.0f}(强势未超买)")
-
-        return {
-            "strategy": cls.NAME,
-            "name": stock["name"],
-            "code": stock["code"],
-            "price": rt["close"],
-            "pct_chg": today_pct,
-            "rsi": rsi14,
-            "recent_max_surge": float(max_recent) if pd.notna(max_recent) else 0.0,
-            "vol_ratio": today_vol / vol_ma5 if vol_ma5 > 0 else 0,
-            "conditions": conditions,
-            "buy_signal": buy_signal,
-        }
-
-
 def load_positions() -> List:
     if os.path.exists(POSITION_FILE):
         with open(POSITION_FILE, "r", encoding="utf-8") as f:
@@ -1080,14 +1019,13 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("晶科能源", "深跌反弹"): 85.7,
         ("川润股份", "底部抬高+温和放量"): 75.0,
         ("裕同科技", "底部抬高+温和放量"): 100.0,
-        ("拓日新能", "底部抬高+温和放量"): 76.5,
+        ("拓日新能", "底部抬高+温和放量"): 70.6,
         ("ST炼石", "底部抬高+温和放量"): 83.3,
         ("华夏航空", "底部抬高+温和放量"): 85.7,
-        ("英维克", "底部抬高+温和放量"): 80.0,
+        ("英维克", "底部抬高+温和放量"): 60.0,
         ("佳力图", "底部抬高+温和放量"): 70.0,
         ("华测导航", "N字突破"): 76.9,
         ("高澜股份", "N字突破"): 68.4,
-        ("安车检测", "板块跟随加速"): 78.6,
     }
     return win_rates.get((stock_name, strategy_name), 0.0)
 
@@ -1291,15 +1229,6 @@ def print_strategy_results(strategy_name: str, results: List[Dict]):
             print(
                 f"       A低={r.get('a_low', 0):.2f}, B高={r.get('b_high', 0):.2f}, "
                 f"C低={r.get('c_low', 0):.2f}, 回调{r.get('pullback_pct', 0):.0f}%"
-            )
-            conditions = r.get("conditions", [])
-            if conditions:
-                print(f"       满足: {', '.join(conditions)}")
-        elif r.get("strategy") == Strategy11_SectorFollow.NAME:
-            rsi_s = f"{r.get('rsi', 0):.1f}" if pd.notna(r.get('rsi')) else "-"
-            print(
-                f"       RSI={rsi_s}, 近5日最大单日涨={r.get('recent_max_surge', 0):.1f}%, "
-                f"量比={r.get('vol_ratio', 0):.2f}"
             )
             conditions = r.get("conditions", [])
             if conditions:
@@ -1553,23 +1482,6 @@ def main():
             print("失败")
     all_results[Strategy10_NBreakout.NAME] = results
     print_strategy_results(Strategy10_NBreakout.NAME, results)
-
-    print("\n[策略11] 板块跟随加速")
-    results = []
-    for stock in Strategy11_SectorFollow.STOCKS:
-        print(f"  分析 {stock['name']}...", end=" ")
-        r = Strategy11_SectorFollow.analyze(stock)
-        if r:
-            results.append(r)
-            win_rate = get_history_win_rate(stock["name"], "板块跟随加速")
-            timing = get_trade_timing(stock["name"], "板块跟随加速")
-            r["win_rate"] = win_rate
-            r["timing"] = timing
-            print(f"完成 - {'买入信号' if r.get('buy_signal') else '无信号'}")
-        else:
-            print("失败")
-    all_results[Strategy11_SectorFollow.NAME] = results
-    print_strategy_results(Strategy11_SectorFollow.NAME, results)
 
     print_summary_with_timing(all_results)
 
