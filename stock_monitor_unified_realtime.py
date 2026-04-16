@@ -976,6 +976,62 @@ class Strategy10_NBreakout:
         }
 
 
+class Strategy11_ShrinkVolumeRise:
+    """川润专用-缩量涨信号触发: 量比<0.8 + 涨>1% + MA20以上"""
+    NAME = "缩量涨信号触发"
+    STOCKS = [
+        {"code": "002272.SZ", "name": "川润股份", "sina_code": "sz002272"},
+    ]
+
+    @classmethod
+    def analyze(cls, stock: Dict) -> Optional[Dict]:
+        df = DataFetcher.fetch_history_data(stock["code"], days=60)
+        if df is None or len(df) < 25:
+            return None
+        rt = DataFetcher.fetch_realtime_sina(stock["sina_code"])
+        if rt is None:
+            return None
+        df = DataFetcher.merge_realtime_data(df, rt)
+        today_pct = (rt["close"] - rt["pre_close"]) / rt["pre_close"] * 100
+
+        # 5日均量
+        vol_ma5 = df["vol"].iloc[-6:-1].mean() if len(df) >= 6 else df["vol"].mean()
+        vol_ratio = df["vol"].iloc[-1] / vol_ma5 if vol_ma5 > 0 else 1
+
+        # MA20
+        ma20 = df["close"].rolling(20).mean().iloc[-1] if len(df) >= 20 else None
+
+        # 条件
+        shrink_ok = vol_ratio < 0.8
+        rise_ok = today_pct > 1
+        ma20_ok = pd.notna(ma20) and rt["close"] > ma20
+
+        buy_signal = shrink_ok and rise_ok and ma20_ok
+
+        conditions = []
+        if shrink_ok:
+            conditions.append(f"缩量(量比{vol_ratio:.2f}<0.8)")
+        if rise_ok:
+            conditions.append(f"涨{today_pct:+.2f}%>1%")
+        if ma20_ok:
+            conditions.append(f"MA20上方({rt['close']:.2f}>{ma20:.2f})")
+
+        return {
+            "strategy": cls.NAME,
+            "name": stock["name"],
+            "code": stock["code"],
+            "price": rt["close"],
+            "pct_chg": today_pct,
+            "vol_ratio": vol_ratio,
+            "ma20": ma20 if pd.notna(ma20) else 0,
+            "shrink_ok": shrink_ok,
+            "rise_ok": rise_ok,
+            "ma20_ok": ma20_ok,
+            "conditions": conditions,
+            "buy_signal": buy_signal,
+        }
+
+
 def load_positions() -> List:
     if os.path.exists(POSITION_FILE):
         with open(POSITION_FILE, "r", encoding="utf-8") as f:
@@ -1026,6 +1082,7 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("佳力图", "底部抬高+温和放量"): 70.0,
         ("华测导航", "N字突破"): 76.9,
         ("高澜股份", "N字突破"): 68.4,
+        ("川润股份", "缩量涨信号触发"): 54.3,
     }
     return win_rates.get((stock_name, strategy_name), 0.0)
 
@@ -1067,9 +1124,10 @@ def get_trade_timing(stock_name: str, strategy_name: str) -> Dict:
     t1_t6 = {
         ("华夏航空", "底部抬高+温和放量"),
     }
-    # 特殊时机：高澜股份 N字突破 T+1/T+7
+    # 特殊时机：高澜股份 N字突破 T+1/T+7, 川润缩量涨 T+1/T+7
     t1_t7 = {
         ("高澜股份", "N字突破"),
+        ("川润股份", "缩量涨信号触发"),
     }
     # 特殊时机：英维克 底部抬高 T+1/T+8
     t1_t8 = {
@@ -1221,6 +1279,14 @@ def print_strategy_results(strategy_name: str, results: List[Dict]):
             print(
                 f"       RSI={rsi_s}, 5日低={r.get('low5', 0):.2f}, 15日低={r.get('low15', 0):.2f}, "
                 f"量比(3/10)={r.get('vol_ratio_3_10', 0):.2f}"
+            )
+            conditions = r.get("conditions", [])
+            if conditions:
+                print(f"       满足: {', '.join(conditions)}")
+        elif r.get("strategy") == Strategy11_ShrinkVolumeRise.NAME:
+            print(
+                f"       量比={r.get('vol_ratio', 0):.2f}, MA20={r.get('ma20', 0):.2f}, "
+                f"涨幅={r.get('pct_chg', 0):+.2f}%"
             )
             conditions = r.get("conditions", [])
             if conditions:
@@ -1482,6 +1548,23 @@ def main():
             print("失败")
     all_results[Strategy10_NBreakout.NAME] = results
     print_strategy_results(Strategy10_NBreakout.NAME, results)
+
+    print("\n[策略11] 川润专用-缩量涨信号触发")
+    results = []
+    for stock in Strategy11_ShrinkVolumeRise.STOCKS:
+        print(f"  分析 {stock['name']}...", end=" ")
+        r = Strategy11_ShrinkVolumeRise.analyze(stock)
+        if r:
+            results.append(r)
+            win_rate = get_history_win_rate(stock["name"], "缩量涨信号触发")
+            timing = get_trade_timing(stock["name"], "缩量涨信号触发")
+            r["win_rate"] = win_rate
+            r["timing"] = timing
+            print(f"完成 - 量比{r.get('vol_ratio',0):.2f} {'买入信号' if r.get('buy_signal') else '无信号'}")
+        else:
+            print("失败")
+    all_results[Strategy11_ShrinkVolumeRise.NAME] = results
+    print_strategy_results(Strategy11_ShrinkVolumeRise.NAME, results)
 
     print_summary_with_timing(all_results)
 

@@ -269,6 +269,20 @@ def check_s8b(df, idx, name):
     return ret5 < -10
 
 
+def check_s11(df, idx, name):
+    """川润缩量涨: 量比<0.8 + 涨>1% + MA20以上"""
+    if idx < 25: return False
+    s = df.iloc[:idx+1]
+    l = s.iloc[-1]
+    prev = s.iloc[-2]
+    pct = (l["close"] / prev["close"] - 1) * 100
+    if pct <= 1: return False
+    vm5 = s["vol"].iloc[-6:-1].mean() if len(s) >= 6 else s["vol"].mean()
+    if vm5 <= 0 or l["vol"] / vm5 >= 0.8: return False
+    ma20 = s["close"].rolling(20).mean().iloc[-1]
+    return pd.notna(ma20) and l["close"] > ma20
+
+
 def check_s10(df, idx, name):
     """N字突破: 回调后突破前高"""
     if idx < 30: return False
@@ -475,6 +489,9 @@ COMBOS = [
     ("N字突破(高澜)", "#6A4C93", check_s10, [
         ("300499.SZ", "高澜股份"),
     ], (1, 7)),  # T+1/T+7 (68.4%胜率, 平均+8.77%)
+    ("缩量涨信号触发(川润)", "#D4A017", check_s11, [
+        ("002272.SZ", "川润股份"),
+    ], (1, 7)),  # T+1/T+7 (54.3%胜率, 均+3.96%, 盈亏比1.9, 涨停命中56%)
 ]
 
 
