@@ -1082,7 +1082,7 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("佳力图", "底部抬高+温和放量"): 70.0,
         ("华测导航", "N字突破"): 76.9,
         ("高澜股份", "N字突破"): 68.4,
-        ("川润股份", "缩量涨信号触发"): 54.3,
+        ("川润股份", "缩量涨信号触发"): 50.0,
     }
     return win_rates.get((stock_name, strategy_name), 0.0)
 
