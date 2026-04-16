@@ -64,6 +64,8 @@ def parse_output(output):
         {"name": "KDJ超卖反弹", "short": "策略7", "color": "#16A085"},
         {"name": "深跌反弹", "short": "策略8", "color": "#D35400"},
         {"name": "底部抬高+温和放量", "short": "策略9", "color": "#2C7873"},
+        {"name": "N字突破", "short": "策略10", "color": "#6A4C93"},
+        {"name": "板块跟随加速", "short": "策略11", "color": "#D4A017"},
     ]
 
     data = {
@@ -89,7 +91,7 @@ def parse_output(output):
     in_summary = False
 
     for line in lines:
-        strategy_match = re.search(r"\[\D*([1-9])\]", line)
+        strategy_match = re.search(r"\[\D*(\d+)\]", line)
         if strategy_match:
             strategy_num = int(strategy_match.group(1))
             current_strategy_idx = strategy_num - 1
@@ -693,6 +695,28 @@ def generate_strategy_doc():
             "timing": "川润/裕同/佳力图 T+1/T+9 | 英维克 T+1/T+8 | 华夏航空 T+1/T+6 | 拓日/ST炼石 T+1/T+4",
             "description": "捕捉横盘震荡后加速上涨的机会。区别于深跌反弹(抓超跌)，本策略识别'反弹后→横盘酝酿→温和放量突破'的形态。7只股票差异化持仓期: 川润+7.28%(8笔75%), 裕同+7.82%(7笔100%), 拓日+5.08%(17笔76.5%,T+4), ST炼石+4.22%(6笔83.3%,T+4), 华夏航空+3.97%(7笔85.7%), 英维克+2.52%(5笔80%), 佳力图+4.04%(10笔70%)。拓日/ST炼石偏'快进快出', 其他偏'趋势慢热'。",
         },
+        {
+            "id": 10,
+            "name": "N字突破",
+            "color": "#6A4C93",
+            "stocks": ["华测导航", "高澜股份"],
+            "win_rates": {"华测导航": "76.9%(T+4)", "高澜股份": "68.4%(T+7)"},
+            "entry": "近15-3天内有一波上涨≥5%(A→B) + 回调25-70%(B→C) + 今日收盘突破B点高点 + 收阳 + 量能≥5日均量",
+            "exit": "按差异化持仓期到期卖出",
+            "timing": "华测导航 T+1/T+4 | 高澜股份 T+1/T+7",
+            "description": "经典N字形态的趋势延续信号。当股价完成'上涨→回调→突破前高'的N字结构时买入。华测导航76.9%(13笔,T+1/T+4,均+4.59%)，高澜股份68.4%(19笔,T+1/T+7,均+8.77%,单笔最大+53%)。适合趋势明确的个股波段操作。",
+        },
+        {
+            "id": 11,
+            "name": "板块跟随加速",
+            "color": "#D4A017",
+            "stocks": ["安车检测"],
+            "win_rates": {"安车检测": "78.6%(T+6)"},
+            "entry": "近5日内有单日涨幅≥5%(板块已启动) + 今日收阳 + 量能温和(0.8-2.5倍5日均量) + RSI14在50-70(强势未超买)",
+            "exit": "持仓6个交易日后卖出",
+            "timing": "T+1开盘买入，T+6开盘卖出",
+            "description": "捕捉板块启动后的趋势中继机会。安车检测78.6%(14笔,T+1/T+6,均+2.71%)。信号要求近期已有大阳线启动(≥5%)，而今天的温和放量确认趋势延续。RSI约束在50-70确保仍在加速段而非超买衰竭。",
+        },
     ]
 
     html = """<!DOCTYPE html>
@@ -960,6 +984,8 @@ def main():
                         {"name": "KDJ超卖反弹", "short": "策略7", "color": "#16A085"},
                         {"name": "深跌反弹", "short": "策略8", "color": "#D35400"},
                         {"name": "底部抬高+温和放量", "short": "策略9", "color": "#2C7873"},
+                        {"name": "N字突破", "short": "策略10", "color": "#6A4C93"},
+                        {"name": "板块跟随加速", "short": "策略11", "color": "#D4A017"},
                     ]
                 ],
                 "summary": {"total_analyzed": 0, "total_buy": 0, "buy_list": []},

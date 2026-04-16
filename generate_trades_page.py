@@ -269,6 +269,45 @@ def check_s8b(df, idx, name):
     return ret5 < -10
 
 
+def check_s10(df, idx, name):
+    """N字突破: 回调后突破前高"""
+    if idx < 30: return False
+    s = df.iloc[:idx+1]
+    wb = s.iloc[-15:-3]
+    if len(wb) < 10: return False
+    b_high = wb["high"].max()
+    b_idx = wb["high"].idxmax()
+    b_pos = wb.index.get_loc(b_idx)
+    a_low = wb.iloc[:max(b_pos, 1)]["low"].min()
+    if (b_high - a_low) / a_low < 0.05: return False
+    lf = s.iloc[-4:]
+    c_low = lf["low"].min()
+    if c_low >= b_high: return False
+    pb = (b_high - c_low) / (b_high - a_low) * 100
+    if not (25 <= pb <= 70): return False
+    l = s.iloc[-1]
+    if l["close"] <= b_high or l["close"] <= l["open"]: return False
+    vm5 = s["vol"].iloc[-6:-1].mean()
+    return l["vol"] >= vm5 * 1.0 if vm5 > 0 else False
+
+
+def check_s11(df, idx, name):
+    """板块跟随加速: 近5日有大涨+今日温和跟涨"""
+    if idx < 30: return False
+    s = df.iloc[:idx+1]
+    r5 = s.iloc[-6:-1]
+    if len(r5) < 5: return False
+    pcts = (r5["close"] / r5["close"].shift(1) - 1) * 100
+    mx = pcts.max()
+    if pd.isna(mx) or mx < 5: return False
+    l = s.iloc[-1]
+    if l["close"] <= l["open"]: return False
+    vm5 = s["vol"].iloc[-6:-1].mean()
+    if vm5 <= 0 or not (vm5 * 0.8 < l["vol"] < vm5 * 2.5): return False
+    rsi = calculate_rsi(s["close"], 14).iloc[-1]
+    return pd.notna(rsi) and 50 <= rsi <= 70
+
+
 def check_s9(df, idx, name):
     """底部抬高+温和放量: 近5日低>近15日低, 3日量均>10日量均*1.2, RSI14 45-65, 收阳"""
     if idx < 30: return False
@@ -447,6 +486,15 @@ COMBOS = [
     ("底部抬高+温和放量(佳力图)", "#2C7873", check_s9, [
         ("603912.SH", "佳力图"),
     ], (1, 9)),  # T+1/T+9 (70.0%胜率, 平均+4.04%)
+    ("N字突破(华测)", "#6A4C93", check_s10, [
+        ("300627.SZ", "华测导航"),
+    ], (1, 4)),  # T+1/T+4 (76.9%胜率, 平均+4.59%)
+    ("N字突破(高澜)", "#6A4C93", check_s10, [
+        ("300499.SZ", "高澜股份"),
+    ], (1, 7)),  # T+1/T+7 (68.4%胜率, 平均+8.77%)
+    ("板块跟随加速(安车)", "#D4A017", check_s11, [
+        ("300572.SZ", "安车检测"),
+    ]),  # T+1/T+6 (默认, 78.6%胜率, 平均+2.71%)
 ]
 
 
