@@ -119,6 +119,14 @@ def check_s2(df, idx, name):
     if pd.notna(l["j"]) and l["j"] < ap["kdj_entry"]: s.append(1)
     return len(s) > 0
 
+def check_s2_delayed3(df, idx, name):
+    """S2延迟3天版: 3天前触发S2 + 至今未涨超2%"""
+    if idx < 63: return False
+    if not check_s2(df, idx - 3, name): return False
+    sig_close = df.iloc[idx - 3]["close"]
+    cur_close = df.iloc[idx]["close"]
+    return (cur_close - sig_close) / sig_close * 100 < 2
+
 def check_s3(df, idx, name):
     if idx < 60: return False
     sub = df.iloc[:idx+1].copy()
@@ -403,9 +411,9 @@ COMBOS = [
     ("RSI+布林带均值回归", "#3498DB", check_s1, [
         ("300696.SZ", "爱乐达"), ("000697.SZ", "ST炼石"), ("002928.SZ", "华夏航空"),
     ]),
-    ("MA支撑+KDJ超卖", "#9B59B6", check_s2, [
+    ("MA支撑+KDJ超卖", "#9B59B6", check_s2_delayed3, [
         ("000697.SZ", "ST炼石"),
-    ]),
+    ]),  # 延迟3天入场: 3天前触发+未涨>2%, 胜率61%→66%, 均+1.29%→+1.86%
     ("多因子买入策略", "#E67E22", check_s3, [
         ("300499.SZ", "高澜股份"), ("002837.SZ", "英维克"),
     ]),

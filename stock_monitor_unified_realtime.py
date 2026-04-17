@@ -291,6 +291,8 @@ class Strategy1_RSI_Bollinger:
 class Strategy2_MA_KDJ:
     NAME = "MA支撑+KDJ超卖"
     STOCKS = [{"code": "000697.SZ", "name": "ST炼石", "sina_code": "sz000697"}]
+    DELAY = 3  # ST炼石延迟3天入场
+    DELAY_THRESHOLD = 2  # 涨超2%放弃
 
     @classmethod
     def analyze(cls, stock: Dict) -> Optional[Dict]:
@@ -308,15 +310,36 @@ class Strategy2_MA_KDJ:
         df = TechnicalIndicators.calculate_kdj(df)
         ap = AdaptiveParams.from_df(df)
         latest = df.iloc[-1]
-        signals = []
+
+        # 延迟入场: 检查3天前是否触发信号 + 至今未涨超2%
+        if len(df) < cls.DELAY + 5:
+            return None
+        sig_day = df.iloc[-1 - cls.DELAY]
+        sig_signals = []
         if (
-            pd.notna(latest["ma20"])
-            and abs(latest["close"] - latest["ma20"]) / latest["ma20"] < 0.02
-            and latest["pct_chg"] > 0
+            pd.notna(sig_day.get("ma20"))
+            and abs(sig_day["close"] - sig_day["ma20"]) / sig_day["ma20"] < 0.02
+            and sig_day["pct_chg"] > 0
         ):
-            signals.append("MA20支撑")
-        if pd.notna(latest["j"]) and latest["j"] < ap["kdj_entry"]:
-            signals.append("KDJ超卖")
+            sig_signals.append("MA20支撑")
+        sig_ap = AdaptiveParams.from_df(df.iloc[:-cls.DELAY])
+        if pd.notna(sig_day.get("j")) and sig_day["j"] < sig_ap["kdj_entry"]:
+            sig_signals.append("KDJ超卖")
+
+        sig_triggered = len(sig_signals) > 0
+        rise = (latest["close"] - sig_day["close"]) / sig_day["close"] * 100
+        not_risen = rise < cls.DELAY_THRESHOLD
+
+        buy_signal = sig_triggered and not_risen
+
+        display_signals = []
+        if sig_triggered:
+            display_signals.append(f"3天前触发({','.join(sig_signals)})")
+        if not_risen:
+            display_signals.append(f"未涨({rise:+.1f}%<{cls.DELAY_THRESHOLD}%)")
+        else:
+            display_signals.append(f"已涨{rise:+.1f}%放弃")
+
         return {
             "strategy": cls.NAME,
             "name": stock["name"],
@@ -325,9 +348,9 @@ class Strategy2_MA_KDJ:
             "pct_chg": latest["pct_chg"],
             "ma20": latest["ma20"],
             "j_value": latest["j"],
-            "signals": signals,
+            "signals": display_signals,
             "adaptive_params": ap,
-            "buy_signal": len(signals) > 0,
+            "buy_signal": buy_signal,
         }
 
 
@@ -1050,7 +1073,7 @@ def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
         ("爱乐达", "RSI+布林带均值回归"): 83.3,
         ("爱乐达", "动量策略"): 64.7,
         ("ST炼石", "RSI+布林带均值回归"): 69.6,
-        ("ST炼石", "MA支撑+KDJ超卖"): 60.9,
+        ("ST炼石", "MA支撑+KDJ超卖"): 66.0,
         ("ST炼石", "RSI+连跌中等信号"): 100.0,
         ("高澜股份", "多因子买入策略"): 60.8,
         ("高澜股份", "RSI+连跌中等信号"): 56.2,
