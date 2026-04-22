@@ -1067,7 +1067,38 @@ def save_positions(positions: List):
         json.dump(positions, f, ensure_ascii=False, indent=2)
 
 
+_DYNAMIC_WIN_RATES_CACHE: Optional[Dict] = None
+
+
+def _load_dynamic_win_rates() -> Dict:
+    """从 docs/win_rates.json 读取最新胜率。文件由 generate_trades_page.py 每次运行时重建。"""
+    global _DYNAMIC_WIN_RATES_CACHE
+    if _DYNAMIC_WIN_RATES_CACHE is not None:
+        return _DYNAMIC_WIN_RATES_CACHE
+    result: Dict = {}
+    path = os.path.join("docs", "win_rates.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for key, info in data.get("rates", {}).items():
+                if "|" not in key:
+                    continue
+                stock, strategy = key.split("|", 1)
+                result[(stock, strategy)] = float(info.get("win_rate", 0))
+        except Exception as e:
+            print(f"[WARN] 读取 {path} 失败: {e}")
+    _DYNAMIC_WIN_RATES_CACHE = result
+    return result
+
+
 def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
+    # 优先使用 docs/win_rates.json 中动态计算的胜率 (每次跑交易明细页时更新)
+    dynamic = _load_dynamic_win_rates()
+    if (stock_name, strategy_name) in dynamic:
+        return dynamic[(stock_name, strategy_name)]
+
+    # 回落: 研究期写死的快照胜率 (首次部署或 docs/win_rates.json 缺失时使用)
     # 自适应参数回测胜率 (2025-01-01起, ST炼石2025-05-07起)
     win_rates = {
         ("爱乐达", "RSI+布林带均值回归"): 83.3,

@@ -735,6 +735,69 @@ def generate_html(all_data):
 import json as _json
 
 TRADES_JSON = "docs/trades_data.json"
+WIN_RATES_JSON = "docs/win_rates.json"
+
+# COMBO策略名 → 监控页使用的简短策略名 (与 stock_monitor_unified_realtime.py get_history_win_rate 的 key 一致)
+COMBO_TO_MONITOR_STRATEGY = {
+    "RSI+布林带均值回归": "RSI+布林带均值回归",
+    "MA支撑+KDJ超卖": "MA支撑+KDJ超卖",
+    "多因子买入策略": "多因子买入策略",
+    "RSI+连跌中等信号": "RSI+连跌中等信号",
+    "RSI+连跌T4(川润)": "RSI+连跌中等信号",
+    "RSI+连跌(佳力图)": "RSI+连跌中等信号",
+    "动量策略": "动量策略",
+    "动量策略T4(川润)": "动量策略",
+    "多因子评分超卖": "多因子评分超卖",
+    "多因子评分超卖(安车)": "多因子评分超卖",
+    "KDJ超卖反弹": "KDJ超卖反弹",
+    "深跌反弹(跌5%+RSI+涨)": "深跌反弹",
+    "深跌反弹(跌5%+RSI+涨)川润": "深跌反弹",
+    "深跌反弹(跌10%)": "深跌反弹",
+    "深跌反弹(跌10%)江淮": "深跌反弹",
+    "深跌反弹(跌5%+RSI+涨)爱乐达": "深跌反弹",
+    "深跌反弹(跌10%)爱乐达": "深跌反弹",
+    "深跌反弹(跌5%+RSI+涨)安车": "深跌反弹",
+    "深跌反弹(跌5%+RSI+涨)晶科": "深跌反弹",
+    "深跌反弹(跌10%)晶科": "深跌反弹",
+    "底部抬高+温和放量(川润)": "底部抬高+温和放量",
+    "底部抬高+温和放量(裕同)": "底部抬高+温和放量",
+    "底部抬高+温和放量(拓日)": "底部抬高+温和放量",
+    "底部抬高+温和放量(ST炼石)": "底部抬高+温和放量",
+    "底部抬高+温和放量(华夏航空)": "底部抬高+温和放量",
+    "底部抬高+温和放量(英维克)": "底部抬高+温和放量",
+    "底部抬高+温和放量(佳力图)": "底部抬高+温和放量",
+    "N字突破(华测)": "N字突破",
+    "N字突破(高澜)": "N字突破",
+    "缩量涨信号触发(川润)": "缩量涨信号触发",
+}
+
+
+def compute_win_rates(all_trades):
+    """基于最新交易数据计算每个(股票, 监控策略名)的胜率。
+    同一(股票, 简短策略)如有多个combo变体(如深跌反弹的5%/10%)，
+    取样本数最多的那个——样本更大更稳定。
+    """
+    rates = {}
+    for combo in COMBOS:
+        combo_strategy = combo[0]
+        monitor_strategy = COMBO_TO_MONITOR_STRATEGY.get(combo_strategy, combo_strategy)
+        for code, name in combo[3]:
+            combo_key = f"{code}|{combo_strategy}"
+            trades_list = all_trades.get(combo_key, [])
+            closed = [t for t in trades_list if not t.get("pending")]
+            if not closed:
+                continue
+            wins = sum(1 for t in closed if t.get("win"))
+            wr = wins / len(closed) * 100
+            key = f"{name}|{monitor_strategy}"
+            existing = rates.get(key)
+            if existing is None or len(closed) > existing["trades"]:
+                rates[key] = {
+                    "win_rate": round(wr, 1),
+                    "trades": len(closed),
+                    "combo": combo_strategy,
+                }
+    return rates
 
 
 def load_saved_trades():
@@ -865,6 +928,15 @@ def main():
     # 保存更新后的交易数据
     save_trades(updated_trades)
     print(f"\n交易数据已保存到 {TRADES_JSON}")
+
+    # 基于最新交易生成胜率表 (供实时监控页消费)
+    win_rates = compute_win_rates(updated_trades)
+    with open(WIN_RATES_JSON, "w", encoding="utf-8") as f:
+        _json.dump({
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "rates": win_rates,
+        }, f, ensure_ascii=False, indent=2)
+    print(f"已生成 {WIN_RATES_JSON} ({len(win_rates)}条)")
 
     # 生成 HTML
     html = generate_html(all_data)

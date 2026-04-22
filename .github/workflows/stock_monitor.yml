@@ -51,11 +51,12 @@ jobs:
       env:
         TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
       run: |
+        # 先跑 trades page, 生成 docs/win_rates.json 供 monitor 消费最新胜率
+        python generate_trades_page.py || echo "[WARN] trades page generation failed"
         python stock_monitor_unified_realtime.py > monitor_output.txt 2>&1 || true
         echo "--- Monitor output (first 100 lines) ---"
         head -100 monitor_output.txt
         echo "--- End monitor output ---"
-        python generate_trades_page.py || echo "[WARN] trades page generation failed"
         python github_actions_runner.py --from-file monitor_output.txt
 
     - name: Upload Pages artifact
