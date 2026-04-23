@@ -958,6 +958,19 @@ def main():
               f"买入{a['buy_date']}@{a['buy_price']}  现价{a['current_price']} ({a['float_pnl']:+.2f}%)")
 
 
+def _resolve_today_trading_idx(df):
+    """返回"今天"在交易日坐标下的索引。
+    如果 df 最后一行就是今天(盘后 tushare 已更新) → 返回 len(df)-1
+    如果 df 最后一行早于今天(盘中运行, tushare 当日日K还未落库) → 返回 len(df)
+        (相当于把"今天"看作 df 之后的下一个交易日占位, 避免标签晚一天)
+    """
+    today_real = pd.Timestamp(datetime.now().date())
+    last_bar = df.iloc[-1]["trade_date"]
+    if pd.Timestamp(last_bar) >= today_real:
+        return len(df) - 1
+    return len(df)
+
+
 def compute_sell_alerts(cache):
     """扫描历史买入信号，筛选今日/明日到期的持仓"""
     alerts = []
@@ -968,18 +981,19 @@ def compute_sell_alerts(cache):
             if code not in cache:
                 continue
             df = cache[code]
-            today_idx = len(df) - 1
-            if today_idx < 60:
+            if len(df) < 61:
                 continue
+            today_trading_idx = _resolve_today_trading_idx(df)
+            last_bar_idx = len(df) - 1  # df 中最新一行的索引 (用于取现价)
             # 时机
             if custom_timing:
                 buy_off, sell_off = custom_timing
             else:
                 buy_off = 0 if (name, strategy_name) in T0_BEST else 1
                 sell_off = 5 if buy_off == 0 else 6
-            # 扫描过去15天内的买入信号
+            # 扫描过去15天内的买入信号 (信号日必须是 df 里已有的交易日)
             for offset in range(0, 16):
-                sig_idx = today_idx - offset
+                sig_idx = last_bar_idx - offset
                 if sig_idx < 60:
                     break
                 try:
@@ -988,8 +1002,8 @@ def compute_sell_alerts(cache):
                 except Exception:
                     continue
                 expected_sell_idx = sig_idx + sell_off
-                days_until_sell = expected_sell_idx - today_idx
-                # 只关心今日(0) 或 明日(1) 到期的
+                days_until_sell = expected_sell_idx - today_trading_idx
+                # 只关心今日(0) 或 明日(1) 到期的 (过去已逾期的不再提醒)
                 if days_until_sell not in (0, 1):
                     continue
                 # 计算买入价
@@ -998,7 +1012,7 @@ def compute_sell_alerts(cache):
                     continue  # 还没到买入日 (不应该发生在这里)
                 buy_price = (df.iloc[sig_idx]["close"] if buy_off == 0
                              else df.iloc[buy_idx]["open"])
-                current_price = df.iloc[today_idx]["close"]
+                current_price = df.iloc[last_bar_idx]["close"]
                 float_pnl = (current_price - buy_price) / buy_price * 100
                 alerts.append({
                     "stock": name,
@@ -1037,7 +1051,8 @@ def compute_sell_alerts(cache):
             if code not in cache:
                 continue
             df = cache[code]
-            today_idx = len(df) - 1
+            today_trading_idx = _resolve_today_trading_idx(df)
+            last_bar_idx = len(df) - 1
             buy_date = pd.to_datetime(t["buy"])
             # 找买入日在df中的位置
             buy_idx_arr = df.index[df["trade_date"] == buy_date]
@@ -1061,13 +1076,13 @@ def compute_sell_alerts(cache):
             # 手动交易的 signal_idx 通常等于 buy_idx - buy_off
             signal_idx = buy_idx - buy_off
             expected_sell_idx = signal_idx + sell_off
-            days_until_sell = expected_sell_idx - today_idx
+            days_until_sell = expected_sell_idx - today_trading_idx
             if days_until_sell not in (0, 1):
                 continue
             # 已被回测找到的(同股票同策略)跳过
             if any(a["stock"] == stock_name and a["strategy"] == strategy for a in alerts):
                 continue
-            current_price = df.iloc[today_idx]["close"]
+            current_price = df.iloc[last_bar_idx]["close"]
             float_pnl = (current_price - t["bp"]) / t["bp"] * 100
             alerts.append({
                 "stock": stock_name,
