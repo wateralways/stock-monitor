@@ -54,6 +54,19 @@ def run_monitor(from_file=None):
 def parse_output(output):
     import re
 
+    # 解析大盘环境 JSON
+    market_env = {}
+    env_match = re.search(
+        r"<!-- MARKET_ENV_JSON -->(.*?)<!-- /MARKET_ENV_JSON -->",
+        output,
+        re.DOTALL,
+    )
+    if env_match:
+        try:
+            market_env = json.loads(env_match.group(1).strip())
+        except Exception as e:
+            print(f"[WARN] Failed to parse market env JSON: {e}")
+
     strategy_configs = [
         {"name": "RSI+布林带均值回归", "short": "策略1", "color": "#3498DB"},
         {"name": "MA支撑+KDJ超卖", "short": "策略2", "color": "#9B59B6"},
@@ -72,6 +85,7 @@ def parse_output(output):
         "time": get_beijing_time().strftime("%Y-%m-%d %H:%M:%S"),
         "strategies": [],
         "summary": {"total_analyzed": 0, "total_buy": 0, "buy_list": []},
+        "market_env": market_env,
     }
 
     for cfg in strategy_configs:
@@ -307,6 +321,49 @@ def generate_html(data):
     buy_value_class = "buy" if summary["total_buy"] > 0 else ""
     signal_ratio = summary["total_buy"] / max(summary["total_analyzed"], 1) * 100
 
+    # 构建市场环境 HTML
+    market_env = data.get("market_env", {})
+    market_env_html = ""
+    if market_env:
+        trend = market_env.get("trend", "unknown")
+        trend_cn = market_env.get("trend_cn", "未知")
+        risk = market_env.get("risk", "medium")
+        desc = market_env.get("market_desc", "")
+        mr_score = market_env.get("mean_reversion_score", 50)
+        tb_score = market_env.get("trend_breakout_score", 50)
+        pos_pct = market_env.get("position_pct", 50)
+        phase_cn = market_env.get("phase_cn", "")
+        prob = market_env.get("consolidation_end_prob", 0)
+
+        tag_class = trend if trend in ("up", "down", "sideways", "sideways_strong", "sideways_weak") else "sideways"
+        risk_color = {"low": "#27ae60", "medium": "#f39c12", "high": "#e74c3c"}.get(risk, "#f39c12")
+        risk_cn = {"low": "低风险", "medium": "中风险", "high": "高风险"}.get(risk, "中风险")
+
+        def _bar(score, label):
+            fill_class = "high" if score >= 70 else ("medium" if score >= 40 else "low")
+            return f'<div class="match-row"><div class="match-label"><span>{label}</span><span>{score}%</span></div><div class="match-bar-bg"><div class="match-bar-fill {fill_class}" style="width:{score}%"></div></div></div>'
+
+        phase_html = ""
+        if phase_cn:
+            prob_part = ""
+            if prob > 0:
+                alert_class = "phase-alert" if prob >= 50 else ""
+                prob_part = f'<div class="{alert_class}">震荡结束概率: {prob}%</div>'
+            phase_html = f'<div class="phase-info">&#128202; {phase_cn}{prob_part}</div>'
+
+        extra_info = ""
+        ma20 = market_env.get("sh_ma20_slope", 0)
+        today_pct = market_env.get("sh_today_pct", 0)
+        if ma20 or today_pct:
+            extra_parts = []
+            if ma20:
+                extra_parts.append(f"MA20斜率: {ma20:+.2f}%")
+            if today_pct:
+                extra_parts.append(f"今日: {today_pct:+.2f}%")
+            extra_info = f'<div style="font-size:12px;color:#999;margin-top:8px;">{" | ".join(extra_parts)}</div>'
+
+        market_env_html = f'<div class="market-env-card"><div class="market-env-header"><span class="market-env-title">&#127760; 市场环境</span><div class="market-env-tags"><span class="env-tag {tag_class}">{trend_cn}</span><span class="env-tag" style="background:{risk_color}">{risk_cn}</span></div></div><div class="env-desc">{desc}</div>{_bar(mr_score, "均值回归策略匹配度")}{_bar(tb_score, "趋势突破策略匹配度")}{_bar(pos_pct, "建议总仓位")}{phase_html}{extra_info}</div>'
+
     html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -517,6 +574,26 @@ def generate_html(data):
         .footer {{ text-align: center; padding: 30px 20px; color: rgba(255,255,255,0.7); font-size: 13px; }}
         @keyframes pulse {{ 0%, 100% {{ transform: scale(1); }} 50% {{ transform: scale(1.05); }} }}
         .pulse {{ animation: pulse 2s infinite; }}
+        .market-env-card {{ background: white; border-radius: 20px; padding: 25px; margin-bottom: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }}
+        .market-env-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }}
+        .market-env-title {{ font-size: 18px; font-weight: 700; color: #333; }}
+        .market-env-tags {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+        .env-tag {{ padding: 4px 12px; border-radius: 15px; font-size: 13px; font-weight: 600; color: white; }}
+        .env-tag.up {{ background: linear-gradient(135deg, #27ae60, #2ecc71); }}
+        .env-tag.down {{ background: linear-gradient(135deg, #e74c3c, #c0392b); }}
+        .env-tag.sideways {{ background: linear-gradient(135deg, #f39c12, #e67e22); }}
+        .env-tag.sideways_strong {{ background: linear-gradient(135deg, #3498db, #2980b9); }}
+        .env-tag.sideways_weak {{ background: linear-gradient(135deg, #95a5a6, #7f8c8d); }}
+        .env-desc {{ font-size: 14px; color: #666; margin-bottom: 15px; line-height: 1.5; }}
+        .match-row {{ margin-bottom: 12px; }}
+        .match-label {{ font-size: 13px; color: #888; margin-bottom: 5px; display: flex; justify-content: space-between; }}
+        .match-bar-bg {{ background: #f0f0f0; border-radius: 10px; height: 12px; overflow: hidden; }}
+        .match-bar-fill {{ height: 100%; border-radius: 10px; transition: width 0.5s ease; }}
+        .match-bar-fill.high {{ background: linear-gradient(90deg, #27ae60, #2ecc71); }}
+        .match-bar-fill.medium {{ background: linear-gradient(90deg, #f39c12, #e67e22); }}
+        .match-bar-fill.low {{ background: linear-gradient(90deg, #e74c3c, #c0392b); }}
+        .phase-info {{ margin-top: 12px; padding: 12px 15px; background: #f8f9fa; border-radius: 12px; font-size: 13px; color: #666; line-height: 1.6; }}
+        .phase-alert {{ color: #e74c3c; font-weight: 600; }}
     </style>
 </head>
 <body>
@@ -540,6 +617,8 @@ def generate_html(data):
                 <div class="stat-label">信号比例</div>
             </div>
         </div>
+        
+        {market_env_html}
         
         {rec_html}
         {sell_html}
