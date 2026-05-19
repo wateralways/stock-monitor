@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-04-23 20:40:12",
+  "generated_at": "2026-05-11 14:38:53",
   "rates": {
     "爱乐达|RSI+布林带均值回归": {
-      "win_rate": 83.3,
+      "win_rate": 77.8,
       "trades": 18,
       "combo": "RSI+布林带均值回归"
     },
@@ -17,18 +17,18 @@
       "combo": "RSI+布林带均值回归"
     },
     "ST炼石|MA支撑+KDJ超卖": {
-      "win_rate": 61.0,
-      "trades": 100,
+      "win_rate": 66.7,
+      "trades": 66,
       "combo": "MA支撑+KDJ超卖"
     },
     "高澜股份|多因子买入策略": {
-      "win_rate": 61.5,
-      "trades": 52,
+      "win_rate": 59.3,
+      "trades": 54,
       "combo": "多因子买入策略"
     },
     "英维克|多因子买入策略": {
-      "win_rate": 57.6,
-      "trades": 59,
+      "win_rate": 55.7,
+      "trades": 61,
       "combo": "多因子买入策略"
     },
     "裕同科技|RSI+连跌中等信号": {
@@ -62,8 +62,8 @@
       "combo": "RSI+连跌中等信号"
     },
     "拓日新能|RSI+连跌中等信号": {
-      "win_rate": 75.0,
-      "trades": 8,
+      "win_rate": 81.8,
+      "trades": 11,
       "combo": "RSI+连跌中等信号"
     },
     "东方电子|RSI+连跌中等信号": {
@@ -72,8 +72,8 @@
       "combo": "RSI+连跌中等信号"
     },
     "爱乐达|动量策略": {
-      "win_rate": 65.7,
-      "trades": 35,
+      "win_rate": 67.6,
+      "trades": 37,
       "combo": "动量策略"
     },
     "川润股份|动量策略": {
@@ -87,8 +87,8 @@
       "combo": "RSI+连跌(佳力图)"
     },
     "拓日新能|多因子评分超卖": {
-      "win_rate": 76.5,
-      "trades": 17,
+      "win_rate": 80.0,
+      "trades": 20,
       "combo": "多因子评分超卖"
     },
     "安车检测|多因子评分超卖": {
@@ -97,8 +97,8 @@
       "combo": "多因子评分超卖(安车)"
     },
     "英维克|KDJ超卖反弹": {
-      "win_rate": 87.5,
-      "trades": 16,
+      "win_rate": 88.2,
+      "trades": 17,
       "combo": "KDJ超卖反弹"
     },
     "高澜股份|深跌反弹": {
@@ -157,28 +157,28 @@
       "combo": "底部抬高+温和放量(华夏航空)"
     },
     "英维克|底部抬高+温和放量": {
-      "win_rate": 50.0,
-      "trades": 6,
+      "win_rate": 44.4,
+      "trades": 9,
       "combo": "底部抬高+温和放量(英维克)"
     },
     "佳力图|底部抬高+温和放量": {
-      "win_rate": 70.0,
-      "trades": 10,
+      "win_rate": 72.7,
+      "trades": 11,
       "combo": "底部抬高+温和放量(佳力图)"
     },
     "华测导航|N字突破": {
-      "win_rate": 71.4,
-      "trades": 14,
+      "win_rate": 62.5,
+      "trades": 16,
       "combo": "N字突破(华测)"
     },
     "高澜股份|N字突破": {
-      "win_rate": 52.6,
-      "trades": 19,
+      "win_rate": 47.6,
+      "trades": 21,
       "combo": "N字突破(高澜)"
     },
     "川润股份|缩量涨信号触发": {
-      "win_rate": 58.8,
-      "trades": 17,
+      "win_rate": 52.6,
+      "trades": 19,
       "combo": "缩量涨信号触发(川润)"
     }
   }
