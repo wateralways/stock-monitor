@@ -103,6 +103,7 @@ def parse_output(output):
     lines = output.split("\n")
     current_strategy_idx = -1
     in_summary = False
+    pending_pause_reason = False
 
     for line in lines:
         strategy_match = re.search(r"\[\D*(\d+)\]", line)
@@ -111,9 +112,29 @@ def parse_output(output):
             current_strategy_idx = strategy_num - 1
             continue
 
+        # 检测暂停策略
+        paused_match = re.search(r"【(.+?)】\[已暂停\]", line)
+        if paused_match:
+            name = paused_match.group(1)
+            for i, s in enumerate(data["strategies"]):
+                if s["name"] == name:
+                    data["strategies"][i]["paused"] = True
+                    pending_pause_reason = True
+                    current_strategy_idx = i
+                    break
+            continue
+
+        if pending_pause_reason and current_strategy_idx >= 0:
+            reason_match = re.search(r"原因:\s*(.+)", line)
+            if reason_match:
+                data["strategies"][current_strategy_idx]["pause_reason"] = reason_match.group(1).strip()
+                pending_pause_reason = False
+            continue
+
         if "汇总" in line:
             in_summary = True
             current_strategy_idx = -1
+            pending_pause_reason = False
             continue
 
         stock_match = re.search(
@@ -229,19 +250,24 @@ def generate_html(data):
                         <div class="price-change {change_class}">{change_symbol}{stock["pct_chg"]:.2f}%</div>
                     </div>
                 </div>"""
+        elif strategy.get("paused"):
+            reason = strategy.get("pause_reason", "该策略当前已暂停")
+            stocks_html = f'<div class="paused-state"><div class="paused-icon">⏸</div><div class="paused-title">已暂停</div><div class="paused-reason">{reason}</div></div>'
         else:
             stocks_html = '<div class="empty-state"><div class="empty-icon">📭</div>暂无数据</div>'
 
         pulse_class = "pulse" if has_buy else ""
+        badge_text = "已暂停" if strategy.get("paused") else f"{strategy['buy_count']}/{strategy['total_count']}"
+        header_opacity = "opacity: 0.6;" if strategy.get("paused") else ""
 
         strategies_html += f"""
         <div class="strategy-card">
-            <div class="strategy-header" style="background: {strategy["color"]}" onclick="toggleStrategy(this)">
+            <div class="strategy-header" style="background: {strategy["color"]}; {header_opacity}" onclick="toggleStrategy(this)">
                 <div class="strategy-title">
                     <span class="strategy-icon {pulse_class}"></span>
                     <span class="strategy-name">{strategy["short"]}: {strategy["name"]}</span>
                 </div>
-                <span class="strategy-badge">{strategy["buy_count"]}/{strategy["total_count"]}</span>
+                <span class="strategy-badge">{badge_text}</span>
             </div>
             <div class="strategy-content active">
                 {stocks_html}
@@ -594,6 +620,10 @@ def generate_html(data):
         .match-bar-fill.low {{ background: linear-gradient(90deg, #e74c3c, #c0392b); }}
         .phase-info {{ margin-top: 12px; padding: 12px 15px; background: #f8f9fa; border-radius: 12px; font-size: 13px; color: #666; line-height: 1.6; }}
         .phase-alert {{ color: #e74c3c; font-weight: 600; }}
+        .paused-state {{ text-align: center; padding: 30px 20px; color: #999; }}
+        .paused-icon {{ font-size: 32px; margin-bottom: 10px; }}
+        .paused-title {{ font-size: 16px; font-weight: 600; color: #e74c3c; margin-bottom: 8px; }}
+        .paused-reason {{ font-size: 13px; color: #888; line-height: 1.5; max-width: 90%; margin: 0 auto; }}
     </style>
 </head>
 <body>
