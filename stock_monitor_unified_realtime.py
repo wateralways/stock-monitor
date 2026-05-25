@@ -12,9 +12,14 @@ import sys
 import io
 import os
 import json
+import ast
 import warnings
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dt_time
 from typing import Dict, List, Optional, Any
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
 
 import numpy as np
 import pandas as pd
@@ -185,45 +190,189 @@ class MarketEnvironment:
     _cache: Optional[Dict] = None
     _cache_time: Optional[datetime] = None
 
+    @staticmethod
+    def _cn_now() -> datetime:
+        """GitHub Action 可能跑在 UTC，市场时段统一按北京时间判断。"""
+        if ZoneInfo is not None:
+            return datetime.now(ZoneInfo("Asia/Shanghai"))
+        return datetime.utcnow() + timedelta(hours=8)
+
+    @staticmethod
+    def _is_cn_trading_day(now_cn: datetime) -> bool:
+        return now_cn.weekday() < 5
+
+    @classmethod
+    def _is_intraday_session(cls, now_cn: datetime) -> bool:
+        if not cls._is_cn_trading_day(now_cn):
+            return False
+        return dt_time(9, 15) <= now_cn.time() <= dt_time(15, 5)
+
+    @classmethod
+    def _is_after_close_session(cls, now_cn: datetime) -> bool:
+        if not cls._is_cn_trading_day(now_cn):
+            return False
+        return now_cn.time() > dt_time(15, 5)
+
+    @staticmethod
+    def _rt_pct(rt: Dict) -> float:
+        return (rt["close"] - rt["pre_close"]) / rt["pre_close"] * 100 if rt.get("pre_close", 0) > 0 else 0.0
+
+    @staticmethod
+    def _append_realtime_index_row(df: pd.DataFrame, rt: Dict, now_cn: datetime) -> pd.DataFrame:
+        rt_pct = MarketEnvironment._rt_pct(rt)
+        today_row = pd.DataFrame(
+            [
+                {
+                    "trade_date": pd.Timestamp(now_cn.date()),
+                    "ts_code": "000001.SH",
+                    "open": rt["open"],
+                    "high": rt["high"],
+                    "low": rt["low"],
+                    "close": rt["close"],
+                    "pre_close": rt["pre_close"],
+                    "change": rt["close"] - rt["pre_close"],
+                    "pct_chg": round(rt_pct, 2),
+                    "vol": rt["volume"] / 100 if rt.get("volume") else 0,
+                    "amount": rt["amount"] / 1000 if rt.get("amount") else 0,
+                }
+            ]
+        )
+        return pd.concat([df, today_row], ignore_index=True)
+
+    @staticmethod
+    def _update_realtime_index_row(df: pd.DataFrame, rt: Dict) -> pd.DataFrame:
+        df = df.copy()
+        rt_pct = MarketEnvironment._rt_pct(rt)
+        last_idx = df.index[-1]
+        df.loc[last_idx, "open"] = rt["open"] if rt.get("open", 0) > 0 else df.loc[last_idx, "open"]
+        df.loc[last_idx, "close"] = rt["close"]
+        df.loc[last_idx, "high"] = max(df.loc[last_idx, "high"], rt["high"])
+        df.loc[last_idx, "low"] = min(df.loc[last_idx, "low"], rt["low"])
+        df.loc[last_idx, "pre_close"] = rt["pre_close"]
+        df.loc[last_idx, "change"] = rt["close"] - rt["pre_close"]
+        df.loc[last_idx, "pct_chg"] = round(rt_pct, 2)
+        df.loc[last_idx, "vol"] = rt["volume"] / 100 if rt.get("volume") else df.loc[last_idx, "vol"]
+        df.loc[last_idx, "amount"] = rt["amount"] / 1000 if rt.get("amount") else df.loc[last_idx, "amount"]
+        return df
+
+    @staticmethod
+    def fetch_sh_index_sina(days: int = 120) -> Optional[pd.DataFrame]:
+        """Tushare 不可用时，用新浪日 K 线兜底，避免大盘环境直接失效。"""
+        try:
+            url = (
+                "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+                f"CN_MarketData.getKLineData?symbol=sh000001&scale=240&ma=no&datalen={days}"
+            )
+            headers = {"Referer": "https://finance.sina.com.cn"}
+            r = requests.get(url, headers=headers, timeout=10)
+            r.raise_for_status()
+            text = r.text.strip()
+            try:
+                rows = json.loads(text)
+            except json.JSONDecodeError:
+                rows = ast.literal_eval(text)
+            if not rows:
+                return None
+
+            df = pd.DataFrame(rows)
+            rename_map = {"day": "trade_date", "volume": "vol"}
+            df = df.rename(columns=rename_map)
+            for col in ["open", "high", "low", "close", "vol"]:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+            df["trade_date"] = pd.to_datetime(df["trade_date"])
+            df = df.dropna(subset=["trade_date", "open", "high", "low", "close"])
+            df = df.sort_values("trade_date").reset_index(drop=True)
+            df["ts_code"] = "000001.SH"
+            df["pre_close"] = df["close"].shift(1)
+            df["pre_close"] = df["pre_close"].fillna(df["close"])
+            df["change"] = df["close"] - df["pre_close"]
+            df["pct_chg"] = df["close"].pct_change().fillna(0) * 100
+            df["pct_chg"] = df["pct_chg"].round(2)
+            if "amount" not in df.columns:
+                df["amount"] = 0
+            else:
+                df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0)
+            return df[
+                [
+                    "ts_code",
+                    "trade_date",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "pre_close",
+                    "change",
+                    "pct_chg",
+                    "vol",
+                    "amount",
+                ]
+            ]
+        except Exception as e:
+            print(f"    [WARN] 新浪上证日线兜底失败: {e}")
+            return None
+
     @classmethod
     def fetch_sh_index(cls) -> Optional[pd.DataFrame]:
+        now_cn = cls._cn_now()
+        today_str = now_cn.strftime("%Y-%m-%d")
+        df = None
+        source = "tushare"
+
         try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=90)
+            end_date = now_cn
+            start_date = end_date - timedelta(days=120)
             df = pro.index_daily(
                 ts_code="000001.SH",
                 start_date=start_date.strftime("%Y%m%d"),
                 end_date=end_date.strftime("%Y%m%d"),
             )
-            if df is None or df.empty:
-                return None
-            df = df.sort_values("trade_date").reset_index(drop=True)
-            df["trade_date"] = pd.to_datetime(df["trade_date"])
-
-            # 交易时段内合并当天实时行情（日线数据尚未更新）
-            rt = DataFetcher.fetch_realtime_sina("sh000001")
-            if rt:
-                today_str = datetime.now().strftime("%Y-%m-%d")
-                last_date = df["trade_date"].iloc[-1].strftime("%Y-%m-%d") if len(df) > 0 else ""
-                rt_pct = (rt["close"] - rt["pre_close"]) / rt["pre_close"] * 100 if rt["pre_close"] > 0 else 0
-                if today_str != last_date:
-                    df = DataFetcher.merge_realtime_data(df, rt)
-                    print(f"    [INFO] 已合并上证实时行情: {rt['close']:.2f} ({rt_pct:+.2f}%)")
-                else:
-                    # 当天数据已存在，用实时数据更新最后一行
-                    df.loc[df.index[-1], "close"] = rt["close"]
-                    df.loc[df.index[-1], "high"] = max(df["high"].iloc[-1], rt["high"])
-                    df.loc[df.index[-1], "low"] = min(df["low"].iloc[-1], rt["low"])
-                    df.loc[df.index[-1], "pct_chg"] = round(rt_pct, 2)
-                    print(f"    [INFO] 已更新上证实时行情: {rt['close']:.2f} ({rt_pct:+.2f}%)")
-            return df
+            if df is not None and not df.empty:
+                df = df.sort_values("trade_date").reset_index(drop=True)
+                df["trade_date"] = pd.to_datetime(df["trade_date"])
+            else:
+                print("    [WARN] Tushare上证指数日线为空，尝试新浪日线兜底")
         except Exception as e:
-            print(f"    [WARN] 获取大盘数据失败: {e}")
+            print(f"    [WARN] 获取Tushare上证指数失败: {e}，尝试新浪日线兜底")
+
+        if df is None or df.empty:
+            df = cls.fetch_sh_index_sina(days=120)
+            source = "sina_daily"
+
+        if df is None or df.empty:
             return None
+
+        last_date = df["trade_date"].iloc[-1].strftime("%Y-%m-%d") if len(df) > 0 else ""
+        has_today_daily = last_date == today_str
+
+        # 盘中用实时行情合成/更新当日指数；收盘后优先使用已经落库的日线。
+        rt = DataFetcher.fetch_realtime_sina("sh000001")
+        if rt:
+            rt_date = rt.get("date", "")
+            rt_is_today = not rt_date or rt_date == today_str
+            rt_pct = cls._rt_pct(rt)
+            if rt_is_today and cls._is_intraday_session(now_cn):
+                if has_today_daily:
+                    df = cls._update_realtime_index_row(df, rt)
+                    source = f"{source}+sina_realtime"
+                    print(f"    [INFO] 盘中已更新上证实时行情: {rt['close']:.2f} ({rt_pct:+.2f}%)")
+                else:
+                    df = cls._append_realtime_index_row(df, rt, now_cn)
+                    source = f"{source}+sina_realtime"
+                    print(f"    [INFO] 盘中已合成上证实时行情: {rt['close']:.2f} ({rt_pct:+.2f}%)")
+            elif rt_is_today and not has_today_daily and cls._is_after_close_session(now_cn):
+                df = cls._append_realtime_index_row(df, rt, now_cn)
+                source = f"{source}+sina_close_fallback"
+                print(f"    [INFO] 当日日线未落库，使用新浪收盘行情兜底: {rt['close']:.2f} ({rt_pct:+.2f}%)")
+            elif has_today_daily:
+                print("    [INFO] 已使用上证当日日线，收盘后不再覆盖实时行情")
+
+        df.attrs["market_data_source"] = source
+        df.attrs["market_data_last_date"] = df["trade_date"].iloc[-1].strftime("%Y-%m-%d")
+        return df
 
     @classmethod
     def get_env(cls) -> Dict:
-        now = datetime.now()
+        now = cls._cn_now()
         if cls._cache is not None and cls._cache_time is not None:
             if (now - cls._cache_time).seconds < 300:
                 return cls._cache
@@ -239,6 +388,8 @@ class MarketEnvironment:
                 "market_risk": "medium",
                 "pause_all": False,
                 "pause_momentum": False,
+                "market_data_source": "missing",
+                "market_data_last_date": "",
             }
 
         latest = df.iloc[-1]
@@ -304,6 +455,8 @@ class MarketEnvironment:
             "market_risk": market_risk,
             "pause_all": pause_all,
             "pause_momentum": pause_momentum,
+            "market_data_source": df.attrs.get("market_data_source", ""),
+            "market_data_last_date": df.attrs.get("market_data_last_date", latest["trade_date"].strftime("%Y-%m-%d")),
             **phase_info,  # 合并市场阶段信息
         }
         cls._cache = result
@@ -1847,6 +2000,8 @@ def print_market_env(me: Dict):
     print(f"  上证位置: {'MA20上方' if me.get('sh_above_ma20') else 'MA20下方'}  {'MA10>MA20(多头)' if me.get('sh_ma10_above_ma20') else 'MA10<MA20(空头)'}")
     print(f"  上证5日涨跌: {me.get('sh_5d_return', 0):+.2f}%  今日: {me.get('sh_today_pct', 0):+.2f}%")
     print(f"  市场波动率: {me.get('sh_vol_20', 0):.2f}%  风险等级: {me.get('market_risk', 'medium')}")
+    if me.get("market_data_source"):
+        print(f"  数据来源: {me.get('market_data_source')}  最新日期: {me.get('market_data_last_date', '')}")
 
     # 市场阶段与变盘概率
     phase = me.get('market_phase', 'unknown')
@@ -2416,6 +2571,8 @@ def print_summary_with_timing(all_results: Dict[str, List], market_env: Optional
         "sh_vol_20": round(me.get('sh_vol_20', 0), 2),
         "pause_all": me.get('pause_all', False),
         "pause_momentum": me.get('pause_momentum', False),
+        "market_data_source": me.get('market_data_source', ''),
+        "market_data_last_date": me.get('market_data_last_date', ''),
     }
     print("\n<!-- MARKET_ENV_JSON -->")
     print(json.dumps(market_json, ensure_ascii=False))
