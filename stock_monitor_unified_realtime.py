@@ -1791,76 +1791,190 @@ def save_positions(positions: List):
 
 _DYNAMIC_WIN_RATES_CACHE: Optional[Dict] = None
 
+# stock code -> name mapping
+CODE_TO_NAME = {
+    "300696.SZ": "爱乐达", "000697.SZ": "ST炼石", "002928.SZ": "华夏航空",
+    "300499.SZ": "高澜股份", "002837.SZ": "英维克", "002831.SZ": "裕同科技",
+    "600486.SH": "扬农化工", "300627.SZ": "华测导航", "002272.SZ": "川润股份",
+    "002218.SZ": "拓日新能", "603912.SH": "佳力图", "000682.SZ": "东方电子",
+    "300572.SZ": "安车检测", "600418.SH": "江淮汽车", "688223.SH": "晶科能源",
+}
 
-def _load_dynamic_win_rates() -> Dict:
-    """从 docs/win_rates.json 读取最新胜率。文件由 generate_trades_page.py 每次运行时重建。"""
+# combo strategy name (trades_data.json key) -> monitor strategy name
+COMBO_TO_MONITOR_STRATEGY = {
+    "RSI+布林带均值回归": "RSI+布林带均值回归",
+    "MA支撑+KDJ超卖": "MA支撑+KDJ超卖",
+    "多因子买入策略": "多因子买入策略",
+    "RSI+连跌中等信号": "RSI+连跌中等信号",
+    "RSI+连跌T4(川润)": "RSI+连跌中等信号",
+    "RSI+连跌(佳力图)": "RSI+连跌中等信号",
+    "动量策略": "动量策略",
+    "动量策略T4(川润)": "动量策略",
+    "多因子评分超卖": "多因子评分超卖",
+    "多因子评分超卖(安车)": "多因子评分超卖",
+    "KDJ超卖反弹": "KDJ超卖反弹",
+    "深跌反弹(跌5%+RSI+涨)": "深跌反弹",
+    "深跌反弹(跌5%+RSI+涨)川润": "深跌反弹",
+    "深跌反弹(跌10%)": "深跌反弹",
+    "深跌反弹(跌10%)江淮": "深跌反弹",
+    "深跌反弹(跌5%+RSI+涨)爱乐达": "深跌反弹",
+    "深跌反弹(跌10%)爱乐达": "深跌反弹",
+    "深跌反弹(跌5%+RSI+涨)安车": "深跌反弹",
+    "深跌反弹(跌5%+RSI+涨)晶科": "深跌反弹",
+    "深跌反弹(跌10%)晶科": "深跌反弹",
+    "底部抬高+温和放量(川润)": "底部抬高+温和放量",
+    "底部抬高+温和放量(裕同)": "底部抬高+温和放量",
+    "底部抬高+温和放量(拓日)": "底部抬高+温和放量",
+    "底部抬高+温和放量(ST炼石)": "底部抬高+温和放量",
+    "底部抬高+温和放量(华夏航空)": "底部抬高+温和放量",
+    "底部抬高+温和放量(英维克)": "底部抬高+温和放量",
+    "底部抬高+温和放量(佳力图)": "底部抬高+温和放量",
+    "N字突破(华测)": "N字突破",
+    "N字突破(高澜)": "N字突破",
+    "缩量涨信号触发(川润)": "缩量涨信号触发",
+}
+
+HALF_LIFE_DAYS = 120  # 时间衰减半衰期（日历天），4个月前的交易权重=0.5
+
+
+def _compute_time_weighted_rates() -> Dict:
+    """从 trades_data.json 实时计算时间加权胜率。
+    近期交易通过指数衰减获得更高权重。
+    半衰期 HALF_LIFE_DAYS 天，即N天前的交易权重 = 0.5^(N/HALF_LIFE_DAYS)。
+
+    返回: {(stock_name, strategy_name): {
+        "weighted_wr": float,  # 时间加权胜率
+        "raw_wr": float,       # 原始等权胜率
+        "trades": int,         # 已完成交易笔数
+    }}
+    """
     global _DYNAMIC_WIN_RATES_CACHE
     if _DYNAMIC_WIN_RATES_CACHE is not None:
         return _DYNAMIC_WIN_RATES_CACHE
-    result: Dict = {}
-    path = os.path.join("docs", "win_rates.json")
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            for key, info in data.get("rates", {}).items():
-                if "|" not in key:
-                    continue
-                stock, strategy = key.split("|", 1)
-                result[(stock, strategy)] = float(info.get("win_rate", 0))
-        except Exception as e:
-            print(f"[WARN] 读取 {path} 失败: {e}")
+
+    path = os.path.join("docs", "trades_data.json")
+    if not os.path.exists(path):
+        _DYNAMIC_WIN_RATES_CACHE = {}
+        return {}
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            all_trades = json.load(f)
+    except Exception as e:
+        print(f"[WARN] 读取 {path} 失败: {e}")
+        _DYNAMIC_WIN_RATES_CACHE = {}
+        return {}
+
+    now = datetime.now()
+    aggregated: Dict = {}
+
+    for key, trades_list in all_trades.items():
+        if "|" not in key:
+            continue
+        code, combo_strategy = key.split("|", 1)
+        stock_name = CODE_TO_NAME.get(code)
+        monitor_strategy = COMBO_TO_MONITOR_STRATEGY.get(combo_strategy)
+        if not stock_name or not monitor_strategy:
+            continue
+        key_tuple = (stock_name, monitor_strategy)
+        if key_tuple not in aggregated:
+            aggregated[key_tuple] = []
+        aggregated[key_tuple].extend(trades_list)
+
+    result = {}
+    for (stock_name, monitor_strategy), trades_list in aggregated.items():
+        closed = [t for t in trades_list if not t.get("pending") and t.get("win") is not None]
+        if not closed:
+            continue
+
+        total_weight = 0.0
+        weighted_wins = 0.0
+        raw_wins = 0
+
+        for t in closed:
+            if t.get("win"):
+                raw_wins += 1
+            try:
+                signal_date = datetime.strptime(t["signal"], "%Y-%m-%d")
+                age_days = max(0, (now - signal_date).days)
+                weight = 0.5 ** (age_days / HALF_LIFE_DAYS)
+            except (ValueError, KeyError):
+                weight = 0.5
+            total_weight += weight
+            if t.get("win"):
+                weighted_wins += weight
+
+        raw_wr = raw_wins / len(closed) * 100
+        weighted_wr = (weighted_wins / total_weight * 100) if total_weight > 0 else 0
+
+        result[(stock_name, monitor_strategy)] = {
+            "weighted_wr": round(weighted_wr, 1),
+            "raw_wr": round(raw_wr, 1),
+            "trades": len(closed),
+        }
+
     _DYNAMIC_WIN_RATES_CACHE = result
     return result
 
 
-def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
-    # 优先使用 docs/win_rates.json 中动态计算的胜率 (每次跑交易明细页时更新)
-    dynamic = _load_dynamic_win_rates()
-    if (stock_name, strategy_name) in dynamic:
-        return dynamic[(stock_name, strategy_name)]
+# 硬编码快照胜率，仅在 trades_data.json 不可用时作为回落
+_FALLBACK_WIN_RATES = {
+    ("爱乐达", "RSI+布林带均值回归"): 83.3,
+    ("爱乐达", "动量策略"): 64.7,
+    ("ST炼石", "RSI+布林带均值回归"): 69.6,
+    ("ST炼石", "MA支撑+KDJ超卖"): 66.0,
+    ("ST炼石", "RSI+连跌中等信号"): 100.0,
+    ("高澜股份", "多因子买入策略"): 60.8,
+    ("高澜股份", "RSI+连跌中等信号"): 56.2,
+    ("英维克", "多因子买入策略"): 58.2,
+    ("英维克", "KDJ超卖反弹"): 84.6,
+    ("裕同科技", "RSI+连跌中等信号"): 78.6,
+    ("扬农化工", "RSI+连跌中等信号"): 71.4,
+    ("华测导航", "RSI+连跌中等信号"): 68.8,
+    ("川润股份", "RSI+连跌中等信号"): 62.5,
+    ("川润股份", "动量策略"): 63.0,
+    ("川润股份", "深跌反弹"): 70.0,
+    ("拓日新能", "RSI+连跌中等信号"): 85.7,
+    ("拓日新能", "多因子评分超卖"): 86.4,
+    ("高澜股份", "深跌反弹"): 81.8,
+    ("江淮汽车", "深跌反弹"): 76.9,
+    ("爱乐达", "深跌反弹"): 73.7,
+    ("华夏航空", "RSI+布林带均值回归"): 83.3,
+    ("佳力图", "RSI+连跌中等信号"): 78.6,
+    ("东方电子", "RSI+连跌中等信号"): 76.9,
+    ("安车检测", "多因子评分超卖"): 85.2,
+    ("安车检测", "深跌反弹"): 75.0,
+    ("晶科能源", "深跌反弹"): 85.7,
+    ("川润股份", "底部抬高+温和放量"): 75.0,
+    ("裕同科技", "底部抬高+温和放量"): 100.0,
+    ("拓日新能", "底部抬高+温和放量"): 70.6,
+    ("ST炼石", "底部抬高+温和放量"): 83.3,
+    ("华夏航空", "底部抬高+温和放量"): 85.7,
+    ("英维克", "底部抬高+温和放量"): 60.0,
+    ("佳力图", "底部抬高+温和放量"): 70.0,
+    ("华测导航", "N字突破"): 76.9,
+    ("高澜股份", "N字突破"): 68.4,
+    ("川润股份", "缩量涨信号触发"): 50.0,
+}
 
-    # 回落: 研究期写死的快照胜率 (首次部署或 docs/win_rates.json 缺失时使用)
-    # 自适应参数回测胜率 (2025-01-01起, ST炼石2025-05-07起)
-    win_rates = {
-        ("爱乐达", "RSI+布林带均值回归"): 83.3,
-        ("爱乐达", "动量策略"): 64.7,
-        ("ST炼石", "RSI+布林带均值回归"): 69.6,
-        ("ST炼石", "MA支撑+KDJ超卖"): 66.0,
-        ("ST炼石", "RSI+连跌中等信号"): 100.0,
-        ("高澜股份", "多因子买入策略"): 60.8,
-        ("高澜股份", "RSI+连跌中等信号"): 56.2,
-        ("英维克", "多因子买入策略"): 58.2,
-        ("英维克", "KDJ超卖反弹"): 84.6,
-        ("裕同科技", "RSI+连跌中等信号"): 78.6,
-        ("扬农化工", "RSI+连跌中等信号"): 71.4,
-        ("华测导航", "RSI+连跌中等信号"): 68.8,
-        ("川润股份", "RSI+连跌中等信号"): 62.5,
-        ("川润股份", "动量策略"): 63.0,
-        ("川润股份", "深跌反弹"): 70.0,
-        ("拓日新能", "RSI+连跌中等信号"): 85.7,
-        ("拓日新能", "多因子评分超卖"): 86.4,
-        ("高澜股份", "深跌反弹"): 81.8,
-        ("江淮汽车", "深跌反弹"): 76.9,
-        ("爱乐达", "深跌反弹"): 73.7,
-        ("华夏航空", "RSI+布林带均值回归"): 83.3,
-        ("佳力图", "RSI+连跌中等信号"): 78.6,
-        ("东方电子", "RSI+连跌中等信号"): 76.9,
-        ("安车检测", "多因子评分超卖"): 85.2,
-        ("安车检测", "深跌反弹"): 75.0,
-        ("晶科能源", "深跌反弹"): 85.7,
-        ("川润股份", "底部抬高+温和放量"): 75.0,
-        ("裕同科技", "底部抬高+温和放量"): 100.0,
-        ("拓日新能", "底部抬高+温和放量"): 70.6,
-        ("ST炼石", "底部抬高+温和放量"): 83.3,
-        ("华夏航空", "底部抬高+温和放量"): 85.7,
-        ("英维克", "底部抬高+温和放量"): 60.0,
-        ("佳力图", "底部抬高+温和放量"): 70.0,
-        ("华测导航", "N字突破"): 76.9,
-        ("高澜股份", "N字突破"): 68.4,
-        ("川润股份", "缩量涨信号触发"): 50.0,
-    }
-    return win_rates.get((stock_name, strategy_name), 0.0)
+
+def get_history_win_rate(stock_name: str, strategy_name: str) -> float:
+    """返回时间加权胜率。从 trades_data.json 实时计算，近期交易权重更高。"""
+    rates = _compute_time_weighted_rates()
+    info = rates.get((stock_name, strategy_name))
+    if info:
+        return info["weighted_wr"]
+    return _FALLBACK_WIN_RATES.get((stock_name, strategy_name), 0.0)
+
+
+def get_win_rate_detail(stock_name: str, strategy_name: str) -> Dict:
+    """返回详细胜率信息，包含时间加权、原始胜率和交易笔数。"""
+    rates = _compute_time_weighted_rates()
+    info = rates.get((stock_name, strategy_name))
+    if info:
+        return info
+    fallback = _FALLBACK_WIN_RATES.get((stock_name, strategy_name), 0.0)
+    return {"weighted_wr": fallback, "raw_wr": fallback, "trades": 0}
 
 
 def get_trade_timing(stock_name: str, strategy_name: str) -> Dict:
@@ -2054,7 +2168,15 @@ def print_strategy_results(strategy_name: str, results: List[Dict], market_env: 
         code = r.get("code", "")
         price = r.get("price", 0)
         pct_chg = r.get("pct_chg", 0)
-        win_rate = get_history_win_rate(name, strategy_name)
+        wr_info = get_win_rate_detail(name, strategy_name)
+        weighted_wr = wr_info["weighted_wr"]
+        raw_wr = wr_info["raw_wr"]
+        trades_n = wr_info["trades"]
+        wr_display = f"{weighted_wr:.1f}%"
+        if trades_n > 0 and abs(weighted_wr - raw_wr) > 2:
+            wr_display += f"(原始{raw_wr:.1f}%)"
+        if trades_n > 0:
+            wr_display += f" N={trades_n}"
         # 如果被大盘过滤阻止，显示原因
         blocked = not r.get("buy_signal") and (r.get("pause_all") or r.get("pause_momentum") or r.get("stock_downtrend"))
         block_note = ""
@@ -2066,7 +2188,7 @@ def print_strategy_results(strategy_name: str, results: List[Dict], market_env: 
             elif r.get("stock_downtrend"):
                 block_note = " [被个股趋势阻止]"
         print(
-            f"  {signal_mark} {name}({code}): 价格{price:.2f}, 涨幅{pct_chg:+.2f}%, 历史胜率{win_rate:.1f}%{block_note}"
+            f"  {signal_mark} {name}({code}): 价格{price:.2f}, 涨幅{pct_chg:+.2f}%, 胜率{wr_display}{block_note}"
         )
         if r.get("strategy") == Strategy1_RSI_Bollinger.NAME:
             ap = r.get("adaptive_params", {})
@@ -2190,7 +2312,7 @@ def print_summary(all_results: Dict[str, List]):
         print("\n买入信号股票列表:")
         print("-" * 100)
         print(
-            f"{'股票':<8} {'策略':<18} {'价格':>8} {'胜率':>6} {'买入时机':<10} {'卖出时机':<10}"
+            f"{'股票':<8} {'策略':<18} {'价格':>8} {'胜率(TW)':>9} {'买入时机':<10} {'卖出时机':<10}"
         )
         print("-" * 100)
         for r in buy_list:
@@ -2198,7 +2320,7 @@ def print_summary(all_results: Dict[str, List]):
             strategy_name = r.get("strategy", "")
             timing = get_trade_timing(name, strategy_name)
             print(
-                f"  {name:<6} {strategy_name:<16} {r.get('price', 0):>8.2f} {get_history_win_rate(name, strategy_name):>5.1f}% {timing['buy_timing']:<10} {timing['sell_timing']:<10}"
+                f"  {name:<6} {strategy_name:<16} {r.get('price', 0):>8.2f} {get_history_win_rate(name, strategy_name):>8.1f}% {timing['buy_timing']:<10} {timing['sell_timing']:<10}"
             )
         print("-" * 100)
         print("\n操作建议:")
@@ -2511,7 +2633,7 @@ def print_summary_with_timing(all_results: Dict[str, List], market_env: Optional
         print("\n买入信号股票列表:")
         print("-" * 110)
         print(
-            f"{'股票':<8} {'策略':<18} {'价格':>8} {'胜率':>6} {'买入时机':<10} {'卖出时机':<10}"
+            f"{'股票':<8} {'策略':<18} {'价格':>8} {'胜率(TW)':>9} {'买入时机':<10} {'卖出时机':<10}"
         )
         print("-" * 110)
         for r in buy_list:
@@ -2520,7 +2642,7 @@ def print_summary_with_timing(all_results: Dict[str, List], market_env: Optional
             timing = r.get("timing", {})
             win_rate = r.get("win_rate", 0)
             print(
-                f"  {name:<6} {strategy_name:<16} {r.get('price', 0):>8.2f} {win_rate:>5.1f}% {timing.get('buy_timing', ''):<10} {timing.get('sell_timing', ''):<10}"
+                f"  {name:<6} {strategy_name:<16} {r.get('price', 0):>8.2f} {win_rate:>8.1f}% {timing.get('buy_timing', ''):<10} {timing.get('sell_timing', ''):<10}"
             )
         print("-" * 110)
         print("\n操作建议:")
