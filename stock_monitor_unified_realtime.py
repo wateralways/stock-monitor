@@ -15,7 +15,7 @@ import json
 import ast
 import warnings
 from datetime import datetime, timedelta, time as dt_time
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
@@ -85,6 +85,62 @@ class DataFetcher:
         except Exception as e:
             print(f"    [ERROR] fetch_realtime_sina {sina_code}: {e}")
             return None
+
+    @staticmethod
+    def fetch_moneyflow_sina(sina_code: str, days: int = 5) -> Optional[List[Dict]]:
+        """从新浪获取个股近期资金流向(主力净流入)
+        返回: [{date, big_net_amount, total_net_amount}, ...] 最近N条，按日期升序
+        """
+        try:
+            url = (
+                "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+                f"MoneyFlow.ssl_qsfx_zjlrqs?page=1&num={days}&sort=opendate&asc=0&daima={sina_code}"
+            )
+            headers = {"Referer": "https://finance.sina.com.cn/"}
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code != 200 or len(r.text) < 100:
+                return None
+            data = json.loads(r.text)
+            if not data:
+                return None
+            records = []
+            for item in data:
+                records.append({
+                    "date": item["opendate"],
+                    "big_net_amount": float(item.get("r0_net", 0)),
+                    "total_net_amount": float(item.get("netamount", 0)),
+                })
+            return sorted(records, key=lambda x: x["date"])  # 升序: 最旧->最新
+        except Exception as e:
+            print(f"    [DEBUG] fetch_moneyflow_sina {sina_code}: {e}")
+            return None
+
+    @staticmethod
+    def check_big_order_inflow(mf_records: List[Dict]) -> Tuple[bool, str]:
+        """检查前日或今日主力是否净流入 (方案U)
+        mf_records: 升序排列的资金流向记录
+        返回: (是否满足, 诊断信息)
+        """
+        if not mf_records or len(mf_records) < 2:
+            return True, "资金流数据不足，放行"  # 数据不足时不阻塞信号
+
+        today_mf = mf_records[-1]  # 最新一天（通常为昨天，因为今天盘后才更新）
+        yesterday_mf = mf_records[-2]  # 前一天
+
+        today_inflow = today_mf["big_net_amount"] > 0
+        yesterday_inflow = yesterday_mf["big_net_amount"] > 0
+
+        if today_inflow or yesterday_inflow:
+            detail = []
+            if today_inflow:
+                detail.append(f"今日主力净流入{today_mf['big_net_amount']/10000:.0f}万")
+            if yesterday_inflow:
+                detail.append(f"前日主力净流入{yesterday_mf['big_net_amount']/10000:.0f}万")
+            return True, "; ".join(detail)
+        else:
+            return False, (f"近2日主力均净流出 "
+                          f"(前日{yesterday_mf['big_net_amount']/10000:.0f}万, "
+                          f"今日{today_mf['big_net_amount']/10000:.0f}万)")
 
     @staticmethod
     def merge_realtime_data(history_df: pd.DataFrame, realtime: Dict) -> pd.DataFrame:
@@ -168,6 +224,35 @@ class TechnicalIndicators:
     def calculate_volume_ratio(df: pd.DataFrame, window: int = 20) -> pd.Series:
         vol_ma = df["vol"].rolling(window=window).mean()
         return df["vol"] / vol_ma
+
+    @staticmethod
+    def calculate_mfi(df: pd.DataFrame, window: int = 14) -> pd.Series:
+        """计算 Money Flow Index (资金流量指标)
+        MFI = RSI 的成交量加权版，衡量资金流入/流出力度
+        MFI < 20: 超卖（资金流出过度）  MFI > 80: 超买（资金流入过度）
+        """
+        typical_price = (df["high"] + df["low"] + df["close"]) / 3
+        raw_money_flow = typical_price * df["vol"]
+        money_flow = raw_money_flow.diff()
+        positive_flow = money_flow.where(money_flow > 0, 0).rolling(window).sum()
+        negative_flow = (-money_flow.where(money_flow < 0, 0)).rolling(window).sum()
+        money_ratio = positive_flow / negative_flow.replace(0, np.nan)
+        mfi = 100 - (100 / (1 + money_ratio))
+        return mfi
+
+    @staticmethod
+    def calculate_decline_volume_ratio(df: pd.DataFrame, lookback: int = 5) -> Optional[float]:
+        """计算近期下跌期间的平均成交量 vs 20日平均成交量之比
+        比值 < 1.0 表示缩量下跌（卖盘枯竭，积极信号）
+        比值 > 1.1 表示放量下跌（恐慌抛售，反弹失败率高）
+        """
+        if df is None or len(df) < 20:
+            return None
+        vol_ma20 = df["vol"].rolling(20).mean().iloc[-1]
+        if pd.isna(vol_ma20) or vol_ma20 <= 0:
+            return None
+        vol_recent = df["vol"].iloc[-min(lookback, len(df)):].mean()
+        return float(vol_recent / vol_ma20)
 
     @staticmethod
     def calculate_consecutive_days(
@@ -440,6 +525,34 @@ class MarketEnvironment:
         pause_all = sh_today_pct < -1.5 or (sh_trend in ("down", "sideways_weak") and sh_5d_return < -3)
         pause_momentum = sh_trend in ("down", "sideways_weak") and sh_5d_return < -1
 
+        # ========== 市场顶部识别（预防系统性下跌）==========
+        # 计算上证RSI14
+        sh_rsi14 = float(TechnicalIndicators.calculate_rsi(df["close"], 14).iloc[-1]) if len(df) >= 14 else 50.0
+
+        # 价格偏离MA20的程度
+        ma20_extension_pct = (close / ma20_now - 1) * 100 if ma20_now > 0 else 0
+
+        # 顶部/过热预警：RSI极度超买 + 价格大幅高于均线
+        overbought_warning = (sh_rsi14 > 75 and ma20_extension_pct > 3.0) or (sh_rsi14 > 80)
+
+        # 系统性下跌风险预警 (类似2026年5月: 冲顶后连续下跌)
+        # 条件: 从近期高点回落 > 2% + MA20走平或下倾 + RSI从高位快速回落
+        high_20d = df["high"].iloc[-20:].max() if len(df) >= 20 else close
+        drawdown_from_high = (close / high_20d - 1) * 100
+        rsi_dropping = sh_rsi14 < 60 and len(df) >= 20 and \
+            TechnicalIndicators.calculate_rsi(df["close"].iloc[:-5], 14).iloc[-1] > 65 if len(df) >= 20 else False
+        systemic_risk_warning = (
+            drawdown_from_high < -2.0 and ma20_slope < 0.3 and rsi_dropping
+        )
+
+        # 提高风险等级
+        if overbought_warning:
+            market_risk = "high"  # 顶部过热，随时可能反转
+            pause_all = True      # 暂停所有买入信号
+        elif systemic_risk_warning:
+            market_risk = "high"  # 系统性下跌进行中
+            pause_all = True      # 暂停所有买入信号
+
         # ========== 市场阶段分析与变盘概率 ==========
         phase_info = cls._analyze_market_phase(df, close, ma20_slope, ma20_now)
 
@@ -455,6 +568,11 @@ class MarketEnvironment:
             "market_risk": market_risk,
             "pause_all": pause_all,
             "pause_momentum": pause_momentum,
+            "sh_rsi14": round(sh_rsi14, 1),
+            "ma20_extension_pct": round(ma20_extension_pct, 1),
+            "overbought_warning": overbought_warning,
+            "systemic_risk_warning": systemic_risk_warning,
+            "drawdown_from_high": round(drawdown_from_high, 1),
             "market_data_source": df.attrs.get("market_data_source", ""),
             "market_data_last_date": df.attrs.get("market_data_last_date", latest["trade_date"].strftime("%Y-%m-%d")),
             **phase_info,  # 合并市场阶段信息
@@ -850,6 +968,16 @@ class Strategy1_RSI_Bollinger:
         if me.get("pause_all"):
             buy_signal = False
 
+        # === 大单流向过滤: 前日或今日主力净流入 (方案U) ===
+        big_order_ok = True
+        big_order_detail = ""
+        if buy_signal:
+            mf_records = DataFetcher.fetch_moneyflow_sina(stock["sina_code"], days=5)
+            if mf_records is not None:
+                big_order_ok, big_order_detail = DataFetcher.check_big_order_inflow(mf_records)
+                if not big_order_ok:
+                    buy_signal = False
+
         sell_cond1 = today_rsi > ap["rsi_exit"]
         sell_cond2 = today_bb_pos > ap["bb_exit"]
         sell_signal = sell_cond1 or sell_cond2
@@ -872,6 +1000,8 @@ class Strategy1_RSI_Bollinger:
             "buy_signal": buy_signal,
             "sell_signal": sell_signal,
             "profit_pct": profit_pct,
+            "big_order_ok": big_order_ok if "big_order_ok" in locals() else True,
+            "big_order_detail": big_order_detail if "big_order_detail" in locals() else "",
             "market_risk": me.get("market_risk", "medium"),
             "pause_all": me.get("pause_all", False),
         }
@@ -926,6 +1056,16 @@ class Strategy2_MA_KDJ:
         if me.get("pause_all"):
             buy_signal = False
 
+        # === 大单流向过滤: 前日或今日主力净流入 (方案U) ===
+        big_order_ok = True
+        big_order_detail = ""
+        if buy_signal:
+            mf_records = DataFetcher.fetch_moneyflow_sina(stock["sina_code"], days=5)
+            if mf_records is not None:
+                big_order_ok, big_order_detail = DataFetcher.check_big_order_inflow(mf_records)
+                if not big_order_ok:
+                    buy_signal = False
+
         display_signals = []
         if sig_triggered:
             display_signals.append(f"3天前触发({','.join(sig_signals)})")
@@ -945,6 +1085,8 @@ class Strategy2_MA_KDJ:
             "signals": display_signals,
             "adaptive_params": ap,
             "buy_signal": buy_signal,
+            "big_order_ok": big_order_ok if "big_order_ok" in locals() else True,
+            "big_order_detail": big_order_detail if "big_order_detail" in locals() else "",
             "market_risk": me.get("market_risk", "medium"),
         }
 
@@ -1055,6 +1197,8 @@ class Strategy3_MultiFactor:
             "ma20_extension": round(ma20_extension, 2),
             "signals": signals,
             "buy_signal": buy_signal,
+            "big_order_ok": big_order_ok if "big_order_ok" in locals() else True,
+            "big_order_detail": big_order_detail if "big_order_detail" in locals() else "",
             "market_risk": me.get("market_risk", "medium"),
             "pause_reason": "大盘暂停" if me.get("pause_all") or me.get("pause_momentum") else "",
         }
@@ -1111,6 +1255,16 @@ class Strategy4_RSI_ConsecutiveDown:
         if me.get("pause_all"):
             buy_signal = False
 
+        # === 大单流向过滤: 前日或今日主力净流入 (方案U) ===
+        big_order_ok = True
+        big_order_detail = ""
+        if buy_signal:
+            mf_records = DataFetcher.fetch_moneyflow_sina(stock_info["sina_code"], days=5)
+            if mf_records is not None:
+                big_order_ok, big_order_detail = DataFetcher.check_big_order_inflow(mf_records)
+                if not big_order_ok:
+                    buy_signal = False
+
         return {
             "strategy": cls.NAME,
             "name": stock_info["name"],
@@ -1124,6 +1278,8 @@ class Strategy4_RSI_ConsecutiveDown:
             "adaptive_params": ap,
             "buy_signal": buy_signal,
             "stock_downtrend": stock_downtrend,
+            "big_order_ok": big_order_ok if "big_order_ok" in locals() else True,
+            "big_order_detail": big_order_detail if "big_order_detail" in locals() else "",
             "market_risk": me.get("market_risk", "medium"),
         }
 
@@ -1301,6 +1457,8 @@ class Strategy5_Momentum:
             "buy_signal": buy_signal,
             "stock_downtrend": stock_downtrend,
             "momentum_overheat": momentum_overheat,
+            "big_order_ok": big_order_ok if "big_order_ok" in locals() else True,
+            "big_order_detail": big_order_detail if "big_order_detail" in locals() else "",
             "market_risk": me.get("market_risk", "medium"),
         }
 
@@ -1415,6 +1573,43 @@ class Strategy6_ScoreModel:
         if me.get("pause_all"):
             buy_signal = False
 
+        # === 大单流向过滤: 前日或今日主力净流入 (方案U) ===
+        big_order_ok = True
+        big_order_detail = ""
+        if buy_signal:
+            mf_records = DataFetcher.fetch_moneyflow_sina(stock["sina_code"], days=5)
+            if mf_records is not None:
+                big_order_ok, big_order_detail = DataFetcher.check_big_order_inflow(mf_records)
+                if not big_order_ok:
+                    buy_signal = False
+
+        # === 缩量下跌确认 ===
+        vol_shrink_ratio = TechnicalIndicators.calculate_decline_volume_ratio(df, lookback=5)
+        vol_expand_drop = False
+        if vol_shrink_ratio is not None and buy_signal:
+            if vol_shrink_ratio > 1.1:
+                vol_expand_drop = True
+                buy_signal = False
+
+        # === MFI + 收盘位置 资金流向检查 ===
+        # 真反弹应满足：收盘在当日上半区(>50%)或MFI正在回升
+        mfi_series = TechnicalIndicators.calculate_mfi(df, window=14)
+        mfi_val = mfi_series.iloc[-1] if len(mfi_series) > 0 else None
+        mfi_prev = mfi_series.iloc[-2] if len(mfi_series) >= 2 else None
+        main_force_weak = False
+        mfi_value = None
+        mfi_improving = False
+        if pd.notna(mfi_val) and buy_signal:
+            mfi_value = round(mfi_val, 1)
+            mfi_improving = pd.notna(mfi_prev) and mfi_val > mfi_prev
+            day_range = rt["high"] - rt["low"]
+            close_position = (rt["close"] - rt["low"]) / day_range if day_range > 0 else 0.5
+            close_strong = close_position > 0.66  # 收盘在上1/3
+            close_mid_up = close_position > 0.5   # 收盘在当日上半区
+            if not close_mid_up and not mfi_improving:
+                main_force_weak = True
+                buy_signal = False
+
         return {
             "strategy": cls.NAME,
             "name": stock["name"],
@@ -1427,6 +1622,13 @@ class Strategy6_ScoreModel:
             "j_value": j,
             "consecutive_down": int(cd),
             "buy_signal": buy_signal,
+            "vol_shrink_ratio": round(vol_shrink_ratio, 2) if vol_shrink_ratio is not None else None,
+            "vol_expand_drop": vol_expand_drop,
+            "mfi_value": mfi_value,
+            "mfi_improving": mfi_improving,
+            "main_force_weak": main_force_weak,
+            "big_order_ok": big_order_ok if "big_order_ok" in locals() else True,
+            "big_order_detail": big_order_detail if "big_order_detail" in locals() else "",
             "market_risk": me.get("market_risk", "medium"),
         }
 
@@ -1463,6 +1665,41 @@ class Strategy7_KDJ_Bounce:
         if me.get("pause_all"):
             buy_signal = False
 
+        # === 大单流向过滤: 前日或今日主力净流入 (方案U) ===
+        big_order_ok = True
+        big_order_detail = ""
+        if buy_signal:
+            mf_records = DataFetcher.fetch_moneyflow_sina(stock["sina_code"], days=5)
+            if mf_records is not None:
+                big_order_ok, big_order_detail = DataFetcher.check_big_order_inflow(mf_records)
+                if not big_order_ok:
+                    buy_signal = False
+
+        # === 缩量下跌确认 ===
+        vol_shrink_ratio = TechnicalIndicators.calculate_decline_volume_ratio(df, lookback=5)
+        vol_expand_drop = False
+        if vol_shrink_ratio is not None and buy_signal:
+            if vol_shrink_ratio > 1.1:
+                vol_expand_drop = True
+                buy_signal = False
+
+        # === MFI + 收盘位置 资金流向检查 ===
+        mfi_series = TechnicalIndicators.calculate_mfi(df, window=14)
+        mfi_val = mfi_series.iloc[-1] if len(mfi_series) > 0 else None
+        mfi_prev = mfi_series.iloc[-2] if len(mfi_series) >= 2 else None
+        main_force_weak = False
+        mfi_value = None
+        mfi_improving = False
+        if pd.notna(mfi_val) and buy_signal:
+            mfi_value = round(mfi_val, 1)
+            mfi_improving = pd.notna(mfi_prev) and mfi_val > mfi_prev
+            day_range = rt["high"] - rt["low"]
+            close_position = (rt["close"] - rt["low"]) / day_range if day_range > 0 else 0.5
+            close_mid_up = close_position > 0.5
+            if not close_mid_up and not mfi_improving:
+                main_force_weak = True
+                buy_signal = False
+
         return {
             "strategy": cls.NAME,
             "name": stock["name"],
@@ -1472,6 +1709,13 @@ class Strategy7_KDJ_Bounce:
             "j_value": j_value,
             "k_value": latest["k"],
             "buy_signal": buy_signal,
+            "vol_shrink_ratio": round(vol_shrink_ratio, 2) if vol_shrink_ratio is not None else None,
+            "vol_expand_drop": vol_expand_drop,
+            "mfi_value": mfi_value,
+            "mfi_improving": mfi_improving,
+            "main_force_weak": main_force_weak,
+            "big_order_ok": big_order_ok if "big_order_ok" in locals() else True,
+            "big_order_detail": big_order_detail if "big_order_detail" in locals() else "",
             "market_risk": me.get("market_risk", "medium"),
         }
 
@@ -1503,12 +1747,29 @@ class Strategy8_DeepDrop:
 
         # 5日跌幅
         ret5d = (latest["close"] / df["close"].iloc[-6] - 1) * 100 if len(df) >= 6 else 0
+        prev_ret5d = (df["close"].iloc[-2] / df["close"].iloc[-7] - 1) * 100 if len(df) >= 7 else 0
         rsi14 = latest["rsi"]
+        ma60 = df["close"].rolling(60).mean().iloc[-1]
+        ma60_dist_pct = (latest["close"] / ma60 - 1) * 100 if pd.notna(ma60) and ma60 > 0 else np.nan
 
         # 信号A: 5日跌>5% & RSI<40 & 当日涨, T+1/T+4
         signal_a = ret5d < -5 and pd.notna(rsi14) and rsi14 < 40 and today_pct > 0
         # 信号B: 5日跌>10%
         signal_b = ret5d < -10 and stock["name"] in ("高澜股份", "江淮汽车", "爱乐达", "安车检测", "晶科能源")
+
+        pause_reason = ""
+        if stock["name"] == "爱乐达":
+            # 爱乐达高位急跌时，ret5<-10 会把获利盘出逃误判成低位反弹。
+            ald_true_deep = (pd.notna(rsi14) and rsi14 <= 35) or (
+                pd.notna(ma60) and latest["close"] <= ma60 * 1.08
+            )
+            if signal_b and prev_ret5d < -10:
+                signal_b = False
+                pause_reason = "爱乐达同一轮急跌已触发过，避免连续抄底"
+            elif (signal_a or signal_b) and not ald_true_deep:
+                signal_a = False
+                signal_b = False
+                pause_reason = "爱乐达仍属高位回落，未进入真正深跌区"
 
         buy_signal = signal_a or signal_b
 
@@ -1518,12 +1779,49 @@ class Strategy8_DeepDrop:
                 buy_signal = False
 
         # 个股处于明显下降趋势中禁止买入
-        ma60 = df["close"].rolling(60).mean().iloc[-1]
+        stock_downtrend = False
         if pd.notna(ma60) and latest["close"] < ma60 * 0.95:
+            stock_downtrend = True
             buy_signal = False
 
         if me.get("pause_all"):
             buy_signal = False
+
+        # === 大单流向过滤: 前日或今日主力净流入 (方案U) ===
+        big_order_ok = True
+        big_order_detail = ""
+        if buy_signal:
+            mf_records = DataFetcher.fetch_moneyflow_sina(stock["sina_code"], days=5)
+            if mf_records is not None:
+                big_order_ok, big_order_detail = DataFetcher.check_big_order_inflow(mf_records)
+                if not big_order_ok:
+                    buy_signal = False
+
+        # === 缩量下跌确认 ===
+        # 持续下跌中如果量能放大（恐慌抛售），反弹失败率高
+        vol_shrink_ratio = TechnicalIndicators.calculate_decline_volume_ratio(df, lookback=5)
+        vol_expand_drop = False
+        if vol_shrink_ratio is not None and buy_signal:
+            if vol_shrink_ratio > 1.1:
+                vol_expand_drop = True
+                buy_signal = False
+
+        # === MFI + 收盘位置 资金流向检查 ===
+        mfi_series = TechnicalIndicators.calculate_mfi(df, window=14)
+        mfi_val = mfi_series.iloc[-1] if len(mfi_series) > 0 else None
+        mfi_prev = mfi_series.iloc[-2] if len(mfi_series) >= 2 else None
+        main_force_weak = False
+        mfi_value = None
+        mfi_improving = False
+        if pd.notna(mfi_val) and buy_signal:
+            mfi_value = round(mfi_val, 1)
+            mfi_improving = pd.notna(mfi_prev) and mfi_val > mfi_prev
+            day_range = rt["high"] - rt["low"]
+            close_position = (rt["close"] - rt["low"]) / day_range if day_range > 0 else 0.5
+            close_mid_up = close_position > 0.5
+            if not close_mid_up and not mfi_improving:
+                main_force_weak = True
+                buy_signal = False
 
         signals = []
         if signal_a:
@@ -1538,9 +1836,20 @@ class Strategy8_DeepDrop:
             "price": rt["close"],
             "pct_chg": today_pct,
             "ret5d": round(ret5d, 1),
+            "prev_ret5d": round(prev_ret5d, 1),
             "rsi": rsi14,
+            "ma60_dist_pct": round(ma60_dist_pct, 1) if pd.notna(ma60_dist_pct) else np.nan,
             "signals": signals,
             "buy_signal": buy_signal,
+            "stock_downtrend": stock_downtrend,
+            "pause_reason": pause_reason,
+            "vol_shrink_ratio": round(vol_shrink_ratio, 2) if vol_shrink_ratio is not None else None,
+            "vol_expand_drop": vol_expand_drop,
+            "mfi_value": mfi_value,
+            "mfi_improving": mfi_improving,
+            "main_force_weak": main_force_weak,
+            "big_order_ok": big_order_ok if "big_order_ok" in locals() else True,
+            "big_order_detail": big_order_detail if "big_order_detail" in locals() else "",
             "market_risk": me.get("market_risk", "medium"),
         }
 
@@ -1641,6 +1950,8 @@ class Strategy9_HigherLowVolume:
             "too_high": too_high,
             "conditions": conditions,
             "buy_signal": buy_signal,
+            "big_order_ok": big_order_ok if "big_order_ok" in locals() else True,
+            "big_order_detail": big_order_detail if "big_order_detail" in locals() else "",
             "market_risk": me.get("market_risk", "medium"),
         }
 
@@ -2114,6 +2425,16 @@ def print_market_env(me: Dict):
     print(f"  上证位置: {'MA20上方' if me.get('sh_above_ma20') else 'MA20下方'}  {'MA10>MA20(多头)' if me.get('sh_ma10_above_ma20') else 'MA10<MA20(空头)'}")
     print(f"  上证5日涨跌: {me.get('sh_5d_return', 0):+.2f}%  今日: {me.get('sh_today_pct', 0):+.2f}%")
     print(f"  市场波动率: {me.get('sh_vol_20', 0):.2f}%  风险等级: {me.get('market_risk', 'medium')}")
+    print(f"  上证RSI14: {me.get('sh_rsi14', 0):.1f}  距MA20: {me.get('ma20_extension_pct', 0):+.1f}%  距20日高点: {me.get('drawdown_from_high', 0):+.1f}%")
+
+    # 顶部/系统性风险预警
+    if me.get("overbought_warning"):
+        print(f"  [⚠️⚠️ 大盘顶部过热!] 上证RSI={me.get('sh_rsi14','?')} (极度超买), 偏离MA20={me.get('ma20_extension_pct','?')}%")
+        print(f"      反转风险极高，强烈建议不买入！等待回调或RSI回落至60以下再考虑")
+    if me.get("systemic_risk_warning"):
+        print(f"  [⚠️⚠️ 系统性下跌中!] 指数从高点回落{me.get('drawdown_from_high','?')}%, RSI从高位快速下行")
+        print(f"      下跌可能尚未结束，建议观望等待企稳，不要接飞刀")
+
     if me.get("market_data_source"):
         print(f"  数据来源: {me.get('market_data_source')}  最新日期: {me.get('market_data_last_date', '')}")
 
@@ -2178,7 +2499,12 @@ def print_strategy_results(strategy_name: str, results: List[Dict], market_env: 
         if trades_n > 0:
             wr_display += f" N={trades_n}"
         # 如果被大盘过滤阻止，显示原因
-        blocked = not r.get("buy_signal") and (r.get("pause_all") or r.get("pause_momentum") or r.get("stock_downtrend"))
+        blocked = not r.get("buy_signal") and (
+            r.get("pause_all")
+            or r.get("pause_momentum")
+            or r.get("stock_downtrend")
+            or r.get("pause_reason")
+        )
         block_note = ""
         if blocked:
             if r.get("pause_all"):
@@ -2187,6 +2513,8 @@ def print_strategy_results(strategy_name: str, results: List[Dict], market_env: 
                 block_note = " [被动量暂停阻止]"
             elif r.get("stock_downtrend"):
                 block_note = " [被个股趋势阻止]"
+            elif r.get("pause_reason"):
+                block_note = " [被策略过滤阻止]"
         print(
             f"  {signal_mark} {name}({code}): 价格{price:.2f}, 涨幅{pct_chg:+.2f}%, 胜率{wr_display}{block_note}"
         )
@@ -2233,16 +2561,44 @@ def print_strategy_results(strategy_name: str, results: List[Dict], market_env: 
             if r.get("stock_downtrend"):
                 print(f"       [过滤] 个股处于下降趋势(价格<MA60)")
         elif r.get("strategy") == Strategy6_ScoreModel.NAME:
+            vol_s = f", 量比={r.get('vol_shrink_ratio', 0):.2f}" if r.get('vol_shrink_ratio') is not None else ""
             print(
                 f"       评分={r.get('score', 0)}, RSI={r.get('rsi', 0):.1f}, "
                 f"BB={r.get('bb_position', 0):.2f}, J={r.get('j_value', 0):.1f}, "
-                f"连跌={r.get('consecutive_down', 0)}天"
+                f"连跌={r.get('consecutive_down', 0)}天{vol_s}"
             )
+            s6_filters = []
+            if r.get("vol_expand_drop"):
+                s6_filters.append(f"放量下跌({r.get('vol_shrink_ratio', 0):.2f})")
+            if r.get("main_force_weak"):
+                mfi_v = r.get("mfi_value", 0)
+                s6_filters.append(f"MFI={mfi_v}资金不足")
+            if s6_filters:
+                print(f"       [过滤] {'; '.join(s6_filters)}")
+            # MFI 资金流向
+            mfi_v = r.get("mfi_value")
+            if mfi_v is not None:
+                mfi_trend = "↑" if r.get("mfi_improving") else "↓"
+                print(f"       MFI={mfi_v} {mfi_trend}")
         elif r.get("strategy") == Strategy7_KDJ_Bounce.NAME:
+            vol_s = f", 量比={r.get('vol_shrink_ratio', 0):.2f}" if r.get('vol_shrink_ratio') is not None else ""
             print(
                 f"       J={r.get('j_value', 0):.1f}, K={r.get('k_value', 0):.1f}, "
-                f"涨幅={r.get('pct_chg', 0):+.2f}%"
+                f"涨幅={r.get('pct_chg', 0):+.2f}%{vol_s}"
             )
+            s7_filters = []
+            if r.get("vol_expand_drop"):
+                s7_filters.append(f"放量下跌({r.get('vol_shrink_ratio', 0):.2f})")
+            if r.get("main_force_weak"):
+                mfi_v = r.get("mfi_value", 0)
+                s7_filters.append(f"MFI={mfi_v}资金不足")
+            if s7_filters:
+                print(f"       [过滤] {'; '.join(s7_filters)}")
+            # MFI 资金流向
+            mfi_v = r.get("mfi_value")
+            if mfi_v is not None:
+                mfi_trend = "↑" if r.get("mfi_improving") else "↓"
+                print(f"       MFI={mfi_v} {mfi_trend}")
         elif r.get("strategy") == Strategy9_HigherLowVolume.NAME:
             rsi_s = f"{r.get('rsi', 0):.1f}" if pd.notna(r.get('rsi')) else "-"
             print(
@@ -2271,11 +2627,26 @@ def print_strategy_results(strategy_name: str, results: List[Dict], market_env: 
         elif r.get("strategy") == Strategy8_DeepDrop.NAME:
             sigs = r.get("signals", [])
             rsi_s = f"{r.get('rsi', 0):.1f}" if pd.notna(r.get('rsi')) else "-"
+            vol_s = f", 量比={r.get('vol_shrink_ratio', 0):.2f}" if r.get('vol_shrink_ratio') is not None else ""
             print(
-                f"       5日跌幅={r.get('ret5d', 0):.1f}%, RSI={rsi_s}, 涨跌={r.get('pct_chg', 0):+.2f}%"
+                f"       5日跌幅={r.get('ret5d', 0):.1f}%, RSI={rsi_s}, "
+                f"涨跌={r.get('pct_chg', 0):+.2f}%, 距MA60={r.get('ma60_dist_pct', 0):+.1f}%{vol_s}"
             )
             if sigs:
                 print(f"       触发: {', '.join(sigs)}")
+            # 过滤原因展示
+            filters = []
+            if r.get("pause_reason"):
+                filters.append(r.get("pause_reason"))
+            if r.get("vol_expand_drop"):
+                filters.append(f"放量下跌({r.get('vol_shrink_ratio', 0):.2f})")
+            if r.get("main_force_weak"):
+                mfi_v = r.get("mfi_value", 0)
+                filters.append(f"MFI={mfi_v}资金不足")
+            if r.get("stock_downtrend"):
+                filters.append("个股下降趋势")
+            if filters:
+                print(f"       [过滤] {'; '.join(filters)}")
             else:
                 # 显示距离触发的距离
                 ret5d = r.get('ret5d', 0)
@@ -2290,7 +2661,27 @@ def print_strategy_results(strategy_name: str, results: List[Dict], market_env: 
                         notes.append(f"当日未涨")
                 if notes:
                     print(f"       未触发: {', '.join(notes)}")
+            # MFI 资金流向（即使未触发信号也显示）
+            mfi_v = r.get("mfi_value")
+            if mfi_v is not None:
+                mfi_trend = "↑" if r.get("mfi_improving") else "↓"
+                print(f"       MFI={mfi_v} {mfi_trend}")
     print(f"\n  买入信号数量: {len(buy_signals)}/{len(results)}")
+
+    # 大单流向不达标的买入信号额外警示
+    if buy_signals:
+        big_order_warned = [r for r in buy_signals if not r.get("big_order_ok", True)]
+        if big_order_warned:
+            print(f"  [⚠️ 大单流向警示] 以下信号前日+今日主力均为净流出，接飞刀风险较高:")
+            for r in big_order_warned:
+                print(f"    - {r.get('name','')}({r.get('code','')}): {r.get('big_order_detail','')}")
+    if market_env:
+        if market_env.get("overbought_warning"):
+            print(f"  [⚠️ 大盘顶部过热] 上证RSI={market_env.get('sh_rsi14','?')}, 距MA20={market_env.get('ma20_extension_pct','?')}%")
+            print(f"     上涨空间有限，反转风险极高，建议等待回调后再入场")
+        if market_env.get("systemic_risk_warning"):
+            print(f"  [⚠️ 系统性下跌中] 上证从高点回落{market_env.get('drawdown_from_high','?')}%, RSI快速下行")
+            print(f"     下跌可能尚未结束，建议观望等待企稳信号")
 
 
 def print_summary(all_results: Dict[str, List]):
@@ -2628,21 +3019,41 @@ def print_summary_with_timing(all_results: Dict[str, List], market_env: Optional
         print("[!] 大盘当日大跌或短期跌幅较大，部分买入信号已被自动过滤")
     if me.get("pause_momentum"):
         print("[!] 当前为震荡/下行市，动量类策略信号已被自动过滤")
+    if me.get("overbought_warning"):
+        print("\n[⚠️⚠️ 大盘顶部过热] 上证RSI极度超买，随时可能反转！")
+        print("   建议：暂不买入，等待回调至MA20附近再考虑")
+    if me.get("systemic_risk_warning"):
+        print("\n[⚠️⚠️ 系统性下跌预警] 指数正在经历系统性回调，下跌可能尚未结束！")
+        print("   建议：观望等待企稳，不要接飞刀")
 
     if buy_list:
+        # 统计大单流向不达标的信号
+        big_warn_count = sum(1 for r in buy_list if not r.get("big_order_ok", True))
+
         print("\n买入信号股票列表:")
-        print("-" * 110)
+        print("-" * 120)
         print(
-            f"{'股票':<8} {'策略':<18} {'价格':>8} {'胜率(TW)':>9} {'买入时机':<10} {'卖出时机':<10}"
+            f"{'股票':<8} {'策略':<18} {'价格':>8} {'胜率(TW)':>9} {'买入时机':<10} {'卖出时机':<10} {'警示':<10}"
         )
-        print("-" * 110)
+        print("-" * 120)
         for r in buy_list:
             name = r.get("name", "")
             strategy_name = r.get("strategy", "")
             timing = r.get("timing", {})
             win_rate = r.get("win_rate", 0)
+            # 检查大单流向
+            big_warn = "⚠️主力流出" if not r.get("big_order_ok", True) else ""
+            # 叠加市场环境警示
+            if me.get("overbought_warning") and big_warn:
+                big_warn = "⚠️⚠️双重风险"
+            elif me.get("overbought_warning"):
+                big_warn = "⚠️大盘过热"
+            elif me.get("systemic_risk_warning") and big_warn:
+                big_warn = "⚠️⚠️双重风险"
+            elif me.get("systemic_risk_warning"):
+                big_warn = "⚠️系统性跌"
             print(
-                f"  {name:<6} {strategy_name:<16} {r.get('price', 0):>8.2f} {win_rate:>8.1f}% {timing.get('buy_timing', ''):<10} {timing.get('sell_timing', ''):<10}"
+                f"  {name:<6} {strategy_name:<16} {r.get('price', 0):>8.2f} {win_rate:>8.1f}% {timing.get('buy_timing', ''):<10} {timing.get('sell_timing', ''):<10} {big_warn:<10}"
             )
         print("-" * 110)
         print("\n操作建议:")
@@ -2693,6 +3104,9 @@ def print_summary_with_timing(all_results: Dict[str, List], market_env: Optional
         "sh_vol_20": round(me.get('sh_vol_20', 0), 2),
         "pause_all": me.get('pause_all', False),
         "pause_momentum": me.get('pause_momentum', False),
+        "sh_rsi14": me.get('sh_rsi14', 50),
+        "overbought_warning": me.get('overbought_warning', False),
+        "systemic_risk_warning": me.get('systemic_risk_warning', False),
         "market_data_source": me.get('market_data_source', ''),
         "market_data_last_date": me.get('market_data_last_date', ''),
     }
