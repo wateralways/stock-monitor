@@ -1582,7 +1582,6 @@ class Strategy6_ScoreModel:
                 big_order_ok, big_order_detail = DataFetcher.check_big_order_inflow(mf_records)
                 if not big_order_ok:
                     buy_signal = False
-
         # === 缩量下跌确认 ===
         vol_shrink_ratio = TechnicalIndicators.calculate_decline_volume_ratio(df, lookback=5)
         vol_expand_drop = False
@@ -1674,7 +1673,6 @@ class Strategy7_KDJ_Bounce:
                 big_order_ok, big_order_detail = DataFetcher.check_big_order_inflow(mf_records)
                 if not big_order_ok:
                     buy_signal = False
-
         # === 缩量下跌确认 ===
         vol_shrink_ratio = TechnicalIndicators.calculate_decline_volume_ratio(df, lookback=5)
         vol_expand_drop = False
@@ -1796,7 +1794,6 @@ class Strategy8_DeepDrop:
                 big_order_ok, big_order_detail = DataFetcher.check_big_order_inflow(mf_records)
                 if not big_order_ok:
                     buy_signal = False
-
         # === 缩量下跌确认 ===
         # 持续下跌中如果量能放大（恐慌抛售），反弹失败率高
         vol_shrink_ratio = TechnicalIndicators.calculate_decline_volume_ratio(df, lookback=5)
