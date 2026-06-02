@@ -117,30 +117,54 @@ class DataFetcher:
 
     @staticmethod
     def check_big_order_inflow(mf_records: List[Dict]) -> Tuple[bool, str]:
-        """检查前日或今日主力是否净流入 (方案U)
-        mf_records: 升序排列的资金流向记录
+        """检查主力资金流向（方案U v2）
+        满足以下任一条件即放行:
+          1. 最新一天主力净流入 > 0
+          2. 近3天累计主力净流入 > 0
+          3. 近3天主力净流出呈减弱趋势（净流出量递减，资金面改善）
+        mf_records: 升序排列的资金流向记录（最旧→最新）
         返回: (是否满足, 诊断信息)
         """
         if not mf_records or len(mf_records) < 2:
             return True, "资金流数据不足，放行"  # 数据不足时不阻塞信号
 
-        today_mf = mf_records[-1]  # 最新一天（通常为昨天，因为今天盘后才更新）
-        yesterday_mf = mf_records[-2]  # 前一天
+        latest_mf = mf_records[-1]  # 最新一天（通常为昨天，因为今天盘后才更新）
 
-        today_inflow = today_mf["big_net_amount"] > 0
-        yesterday_inflow = yesterday_mf["big_net_amount"] > 0
+        # 条件1: 最新一天主力净流入 > 0
+        if latest_mf["big_net_amount"] > 0:
+            return True, f"最新日主力净流入{latest_mf['big_net_amount']/10000:.0f}万"
 
-        if today_inflow or yesterday_inflow:
-            detail = []
-            if today_inflow:
-                detail.append(f"今日主力净流入{today_mf['big_net_amount']/10000:.0f}万")
-            if yesterday_inflow:
-                detail.append(f"前日主力净流入{yesterday_mf['big_net_amount']/10000:.0f}万")
-            return True, "; ".join(detail)
-        else:
-            return False, (f"近2日主力均净流出 "
-                          f"(前日{yesterday_mf['big_net_amount']/10000:.0f}万, "
-                          f"今日{today_mf['big_net_amount']/10000:.0f}万)")
+        # 取近3天数据用于条件2和条件3
+        recent_3 = mf_records[-3:] if len(mf_records) >= 3 else mf_records
+
+        # 条件2: 近3天累计主力净流入 > 0
+        total_3d = sum(r["big_net_amount"] for r in recent_3)
+        if total_3d > 0:
+            return True, f"近3日累计主力净流入{total_3d/10000:.0f}万"
+
+        # 条件3: 近3天主力净流出趋势呈减弱趋势
+        # (净流出量递减，即 big_net_amount 逐步回升/负值收窄)
+        if len(recent_3) >= 3:
+            amounts = [r["big_net_amount"] for r in recent_3]
+            # 逐个比较相邻两天，看是否持续改善
+            improving_steps = 0
+            for i in range(1, len(amounts)):
+                if amounts[i] > amounts[i-1]:
+                    improving_steps += 1
+            # 至少有一步在改善，且最新比最旧的好
+            if improving_steps >= 1 and amounts[-1] > amounts[0]:
+                return True, (
+                    f"主力净流出趋势减弱"
+                    f"(从{amounts[0]/10000:.0f}万"
+                    f"→{amounts[-1]/10000:.0f}万)"
+                )
+
+        # 都不满足
+        return False, (
+            f"近3日主力均净流出且趋势未改善 "
+            f"(累计{total_3d/10000:.0f}万, "
+            f"最新{latest_mf['big_net_amount']/10000:.0f}万)"
+        )
 
     @staticmethod
     def merge_realtime_data(history_df: pd.DataFrame, realtime: Dict) -> pd.DataFrame:
