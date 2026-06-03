@@ -68,17 +68,39 @@ def parse_output(output):
             print(f"[WARN] Failed to parse market env JSON: {e}")
 
     strategy_configs = [
-        {"name": "RSI+布林带均值回归", "short": "策略1", "color": "#3498DB"},
-        {"name": "MA支撑+KDJ超卖", "short": "策略2", "color": "#9B59B6"},
-        {"name": "多因子买入策略", "short": "策略3", "color": "#E67E22"},
-        {"name": "RSI+连跌中等信号", "short": "策略4", "color": "#27AE60"},
-        {"name": "动量策略", "short": "策略5", "color": "#E74C3C"},
-        {"name": "多因子评分超卖", "short": "策略6", "color": "#8E44AD"},
-        {"name": "KDJ超卖反弹", "short": "策略7", "color": "#16A085"},
-        {"name": "深跌反弹", "short": "策略8", "color": "#D35400"},
-        {"name": "底部抬高+温和放量", "short": "策略9", "color": "#2C7873"},
-        {"name": "N字突破", "short": "策略10", "color": "#6A4C93"},
-        {"name": "缩量涨信号触发", "short": "策略11", "color": "#D4A017"},
+        {"name": "RSI+布林带均值回归", "short": "S1", "color": "#3498DB",
+         "type": "博反弹", "type_class": "mr",
+         "cond": "(RSI<自适应阈值 或 BB<阈值) + 当日涨 + 收阳 | 过滤: 主力流向 + MA20斜率"},
+        {"name": "MA支撑+KDJ超卖", "short": "S2", "color": "#9B59B6",
+         "type": "博反弹", "type_class": "mr",
+         "cond": "3天前(MA20支撑或KDJ超卖)触发 + 3日未涨超2% | 过滤: 主力流向 | 延迟3天入场"},
+        {"name": "多因子买入策略", "short": "S3", "color": "#E67E22",
+         "type": "趋势突破", "type_class": "tb",
+         "cond": "VPP量价齐升/动量延续/突破/MACD 多因子共振 | 过滤: 大盘趋势 + MA60"},
+        {"name": "RSI+连跌中等信号", "short": "S4", "color": "#27AE60",
+         "type": "博反弹", "type_class": "mr",
+         "cond": "RSI<=阈值(自适应/固定35) + 连跌>=2天 | 过滤: 主力流向 + 个股趋势"},
+        {"name": "动量策略", "short": "S5", "color": "#E74C3C",
+         "type": "趋势突破", "type_class": "tb",
+         "cond": "量价共振/动量延续/超跌反弹/突破/MACD 任一触发 | 过滤: 趋势+超热"},
+        {"name": "多因子评分超卖", "short": "S6", "color": "#8E44AD",
+         "type": "博反弹", "type_class": "mr",
+         "cond": "RSI+BB+KDJ+连跌+5日跌幅 综合>=50分 | 过滤: 主力流向 + 缩量 + MFI"},
+        {"name": "KDJ超卖反弹", "short": "S7", "color": "#16A085",
+         "type": "博反弹", "type_class": "mr",
+         "cond": "J值<10 + 当日上涨 | 过滤: 主力流向 + 缩量 + MFI + MA60"},
+        {"name": "深跌反弹", "short": "S8", "color": "#D35400",
+         "type": "博反弹", "type_class": "mr",
+         "cond": "A:5日跌>5%+RSI<40+涨 | B:5日跌>10% | 过滤: 主力+MA20+缩量+MFI"},
+        {"name": "底部抬高+温和放量", "short": "S9", "color": "#2C7873",
+         "type": "趋势突破", "type_class": "tb",
+         "cond": "底部抬高+量能放大+RSI确认+收阳 | 过滤: 大盘风险+主力流向"},
+        {"name": "N字突破", "short": "S10", "color": "#6A4C93",
+         "type": "趋势突破", "type_class": "tb",
+         "cond": "A→B涨>=5%+B→C回调25~70%+破B高+收阳+放量"},
+        {"name": "缩量涨信号触发", "short": "S11", "color": "#D4A017",
+         "type": "趋势突破", "type_class": "tb",
+         "cond": "量比<0.8 + 涨>1% + MA20上方 | 川润专用"},
     ]
 
     data = {
@@ -94,6 +116,9 @@ def parse_output(output):
                 "name": cfg["name"],
                 "short": cfg["short"],
                 "color": cfg["color"],
+                "type": cfg["type"],
+                "type_class": cfg["type_class"],
+                "cond": cfg["cond"],
                 "stocks": [],
                 "buy_count": 0,
                 "total_count": 0,
@@ -260,12 +285,21 @@ def generate_html(data):
         badge_text = "已暂停" if strategy.get("paused") else f"{strategy['buy_count']}/{strategy['total_count']}"
         header_opacity = "opacity: 0.6;" if strategy.get("paused") else ""
 
+        type_tag = strategy.get("type", "")
+        type_class = strategy.get("type_class", "")
+        type_html = f'<span class="strategy-type-tag tag-{type_class}">{type_tag}</span>' if type_tag else ""
+        cond = strategy.get("cond", "")
+
         strategies_html += f"""
         <div class="strategy-card">
             <div class="strategy-header" style="background: {strategy["color"]}; {header_opacity}" onclick="toggleStrategy(this)">
-                <div class="strategy-title">
-                    <span class="strategy-icon {pulse_class}"></span>
-                    <span class="strategy-name">{strategy["short"]}: {strategy["name"]}</span>
+                <div class="strategy-title-col">
+                    <div class="strategy-title">
+                        <span class="strategy-icon {pulse_class}"></span>
+                        <span class="strategy-name">{strategy["short"]}: {strategy["name"]}</span>
+                        {type_html}
+                    </div>
+                    <div class="strategy-cond">{cond}</div>
                 </div>
                 <span class="strategy-badge">{badge_text}</span>
             </div>
@@ -446,6 +480,31 @@ def generate_html(data):
         .stat-value {{ font-size: 32px; font-weight: bold; color: #333; }}
         .stat-value.buy {{ color: #e74c3c; }}
         .stat-label {{ font-size: 13px; color: #888; margin-top: 5px; }}
+        .filter-rules {{
+            background: white;
+            border-radius: 16px;
+            padding: 18px;
+            margin-bottom: 15px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+        }}
+        .filter-title {{
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #f0f0f0;
+        }}
+        .filter-grid {{ display: flex; flex-direction: column; gap: 8px; }}
+        .filter-item {{
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            font-size: 12px;
+            color: #666;
+            line-height: 1.5;
+        }}
+        .filter-icon {{ flex-shrink: 0; font-size: 14px; }}
         .strategy-card {{
             background: white;
             border-radius: 20px;
@@ -462,7 +521,23 @@ def generate_html(data):
             cursor: pointer;
         }}
         .strategy-title {{ display: flex; align-items: center; gap: 10px; }}
+        .strategy-title-col {{ display: flex; flex-direction: column; gap: 4px; flex: 1; }}
         .strategy-name {{ font-size: 16px; font-weight: 600; }}
+        .strategy-cond {{
+            font-size: 11px;
+            opacity: 0.85;
+            line-height: 1.4;
+        }}
+        .strategy-type-tag {{
+            display: inline-block;
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+        }}
+        .tag-mr {{ background: rgba(255,255,255,0.35); color: #fff; }}
+        .tag-tb {{ background: rgba(255,255,255,0.35); color: #fff; }}
         .strategy-badge {{
             background: rgba(255,255,255,0.3);
             padding: 5px 12px;
@@ -647,9 +722,31 @@ def generate_html(data):
                 <div class="stat-label">信号比例</div>
             </div>
         </div>
-        
+
+        <div class="filter-rules">
+            <div class="filter-title">过滤规则 (2026-06更新)</div>
+            <div class="filter-grid">
+                <div class="filter-item">
+                    <span class="filter-icon">💰</span>
+                    <span class="filter-text"><b>主力资金流向(方案U v2)</b>: 当日主力净流入>0 或 近3日累计>0 或 流出衰减 — S1/S2/S4/S6/S7/S8</span>
+                </div>
+                <div class="filter-item">
+                    <span class="filter-icon">📉</span>
+                    <span class="filter-text"><b>MA20下降趋势</b>: MA20斜率<-1%禁止买入，避免下降趋势接飞刀 — S1/S8</span>
+                </div>
+                <div class="filter-item">
+                    <span class="filter-icon">📊</span>
+                    <span class="filter-text"><b>缩量下跌确认</b>: 下跌中量比>1.1(放量抛售)禁止买入 — S6/S7/S8</span>
+                </div>
+                <div class="filter-item">
+                    <span class="filter-icon">🔍</span>
+                    <span class="filter-text"><b>MFI+收盘位置</b>: 收盘在当日下半区且MFI未回升，禁止买入 — S6/S7/S8</span>
+                </div>
+            </div>
+        </div>
+
         {market_env_html}
-        
+
         {rec_html}
         {sell_html}
         {strategies_html}
@@ -694,6 +791,7 @@ def generate_strategy_doc():
             "entry": "RSI或布林带位置低于阈值，且当日上涨收阳。爱乐达/华夏航空用自适应阈值+MA20趋势过滤；ST炼石用固定阈值(RSI<33/BB<0.5)无趋势过滤",
             "exit": "RSI > 自适应卖出阈值(约50-70) 或 布林带位置 > 0.75",
             "timing": "华夏航空T+0/T+5尾盘 | 爱乐达T+0/T+5尾盘 | ST炼石T+1/T+6",
+            "filters": ["主力资金流向(方案U)", "MA20斜率<-1%禁止", "个股MA20下降趋势(非ST)"],
             "description": "利用RSI超卖和布林带下轨支撑，捕捉短期反弹机会。华夏航空83.3%胜率(18笔,平均+2.97%,T+0/T+5)；爱乐达83.3%+MA20趋势过滤；ST炼石用固定参数。",
         },
         {
@@ -705,6 +803,8 @@ def generate_strategy_doc():
             "entry": "MA20支撑或KDJ超卖信号触发后，延迟3天观察: 如果未涨超2%则买入，已大涨则放弃",
             "exit": "持仓5个交易日后开盘卖出",
             "timing": "信号日+3天后确认未涨→T+1开盘买入，T+6开盘卖出",
+            "filters": ["主力资金流向(方案U)", "大盘风险暂停"],
+
             "description": "ST炼石专用延迟入场策略。KDJ超卖触发后不急着买，等3天让二次探底完成再入场。延迟后胜率61%→66%，均盈+1.29%→+1.86%，97笔样本验证。涨超2%的信号放弃(这些信号虽然也好，但等待可获得更好的入场价)。",
         },
         {
@@ -747,6 +847,8 @@ def generate_strategy_doc():
             "entry": "RSI <= 阈值(扬农化工/拓日新能/佳力图固定35，其他自适应约25-40) 且连续下跌 >= 2天",
             "exit": "RSI > 50 或连续上涨2天",
             "timing": "T+0尾盘买入(高澜/裕同/扬农/华测/川润/东方电子)；佳力图T+1/T+5；其余T+1/T+6",
+            "filters": ["主力资金流向(方案U)", "个股趋势(price<MA60*0.97)", "大盘风险暂停"],
+
             "description": "捕捉连续下跌后的超跌反弹机会。佳力图78.6%(14笔,固定RSI<=35,T+1/T+5,平均+2.65%)；东方电子76.9%(13笔,T+0/T+5,平均+2.88%)。扬农化工/拓日新能/佳力图使用固定RSI<=35阈值。",
         },
         {
@@ -769,6 +871,8 @@ def generate_strategy_doc():
             "entry": "9个因子加权评分>=50分: RSI14(0-25), 布林带位置(0-20), KDJ J值(0-15), 连跌天数(0-15), 5日跌幅(0-10), 大盘涨(+5), 长下影线(+5), 相对弱势(+5), 缩量罚分(-8)",
             "exit": "持仓5-6个交易日后卖出",
             "timing": "拓日新能T+0/T+5尾盘 | 安车检测T+1/T+6开盘",
+            "filters": ["主力资金流向(方案U)", "缩量下跌确认(量比>1.1禁止)", "MFI+收盘位置", "MA60+大盘下行禁止"],
+
             "description": "评分制超卖反弹策略。拓日新能86.4%胜率(22笔,T+0/T+5,平均+3%)；安车检测85.2%胜率(27笔,T+1/T+6,平均+5.17%,总收益+139.7%)。综合9个技术因子加权打分>=50触发买入。",
         },
         {
@@ -780,6 +884,8 @@ def generate_strategy_doc():
             "entry": "KDJ的J值<10 且 当日收涨(确认止跌反弹)",
             "exit": "持仓5个交易日后尾盘卖出",
             "timing": "T+0尾盘买入，T+5尾盘卖出",
+            "filters": ["主力资金流向(方案U)", "缩量下跌确认", "MFI+收盘位置", "MA60下方+大盘下行禁止"],
+
             "description": "专为英维克设计的KDJ超卖反弹策略。当J值低于10(深度超卖)且当日收涨(确认反弹启动)时买入。回测13笔交易，84.6%胜率，平均+2.6%。替代原动量策略(53.1%)，胜率提升31个百分点。",
         },
         {
@@ -791,7 +897,8 @@ def generate_strategy_doc():
             "entry": "信号A: 5日跌>5% & RSI14<40 & 当日涨 | 信号B: 5日跌>10%(高澜/江淮/爱乐达/安车检测/晶科能源)",
             "exit": "信号A: 3-4天后卖出 | 信号B: 4-6天后卖出",
             "timing": "晶科T+0/T+4 | 爱乐达信号A T+0/T+3 | 安车检测T+1/T+6 | 其他信号A T+0/T+4 | 其他信号B T+0/T+5(江淮T+1/T+6)",
-            "description": "深跌后的超跌反弹策略。晶科能源信号A 85.7%(7笔,T+0/T+4)、信号B 78.6%(14笔,T+0/T+4,平均+3.80%)；安车检测信号A 75.0%(8笔,T+1/T+6,平均+8.01%)。信号A适用全部6只股票，信号B仅限高澜/江淮/爱乐达/安车检测/晶科能源。",
+            "filters": ["主力资金流向(方案U)", "MA20斜率<-1%禁止", "缩量下跌确认", "MFI+收盘位置", "个股下降趋势(price<MA60*0.95)", "爱乐达高位急跌保护"],
+            "description": "深跌后的超跌反弹策略。晶科能源信号A 85.7%(7笔,T+0/T+4)、信号B 78.6%(14笔,T+0/T+4,平均+3.80%)；安车检测信号A 75.0%(8笔,T+1/T+6,平均+8.01%)。信号A适用全部6只股票，信号B仅限高澜/江淮/爱乐达/安车检测/晶科能源。2026-06新增MA20斜率过滤(-155%→-39%减亏效果)。",
         },
         {
             "id": 9,
@@ -852,7 +959,19 @@ def generate_strategy_doc():
         }
         .header h1 { font-size: 22px; color: #333; }
         .header .back { position: absolute; left: 15px; top: 20px; color: #667eea; text-decoration: none; font-size: 14px; }
-        .container { max-width: 600px; margin: 0 auto; padding: 15px; }
+        .container { max-width: 680px; margin: 0 auto; padding: 15px; }
+        .filter-summary {
+            background: white;
+            border-radius: 16px;
+            padding: 18px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .filter-summary h3 { font-size: 16px; color: #333; margin-bottom: 12px; }
+        .filter-summary .fs-item {
+            font-size: 13px; color: #666; padding: 4px 0; line-height: 1.5;
+        }
+        .fs-item b { color: #333; }
         .strategy-card {
             background: white;
             border-radius: 16px;
@@ -868,6 +987,16 @@ def generate_strategy_doc():
             align-items: center;
         }
         .strategy-title { font-size: 18px; font-weight: 600; }
+        .strategy-type-tag {
+            display: inline-block;
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+            background: rgba(255,255,255,0.35);
+            color: #fff;
+            margin-left: 8px;
+        }
         .strategy-body { padding: 15px 20px; }
         .info-row { margin-bottom: 12px; }
         .info-label { font-size: 13px; color: #888; margin-bottom: 3px; }
@@ -882,6 +1011,16 @@ def generate_strategy_doc():
             margin-bottom: 5px;
         }
         .win-rate { color: #27ae60; font-weight: 600; }
+        .filter-tag {
+            display: inline-block;
+            background: #fff3e0;
+            color: #e67e22;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            margin-right: 4px;
+            margin-bottom: 4px;
+        }
         .footer {
             text-align: center;
             padding: 20px;
@@ -898,6 +1037,14 @@ def generate_strategy_doc():
     <div class="container">
         <div style="text-align:center;margin-bottom:15px;">
             <a href="trades.html" style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:10px 24px;border-radius:25px;text-decoration:none;font-size:15px;font-weight:600;box-shadow:0 4px 15px rgba(102,126,234,0.4);">📋 查看历史交易明细</a>
+        </div>
+        <div class="filter-summary">
+            <h3>过滤体系 (2026-06更新)</h3>
+            <div class="fs-item">💰 <b>主力资金流向(方案U v2)</b>: 当日主力净流入>0 或 近3日累计>0 或 流出趋势减弱 → S1/S2/S4/S6/S7/S8</div>
+            <div class="fs-item">📉 <b>MA20斜率过滤</b>: MA20斜率<-1%时禁止买入，避免下降趋势中接飞刀 → S1/S8</div>
+            <div class="fs-item">📊 <b>缩量下跌确认</b>: 下跌过程中量比>1.1(恐慌抛售)禁止买入 → S6/S7/S8</div>
+            <div class="fs-item">🔍 <b>MFI+收盘位置</b>: 收盘在当日下半区且MFI未回升，禁止买入 → S6/S7/S8</div>
+            <div class="fs-item" style="margin-top:8px;font-size:12px;color:#999;">回测验证(2026年5-6月): 过滤后累计减亏 S4(-59%→-15%) S8(-155%→-39%) S6(-18%→-4%)</div>
         </div>
 """
 
@@ -932,7 +1079,15 @@ def generate_strategy_doc():
                 <div class="info-row">
                     <div class="info-label">交易时机</div>
                     <div class="info-value">{s["timing"]}</div>
-                </div>
+                </div>"""
+        if s.get("filters"):
+            filter_tags = "".join([f'<span class="filter-tag">🛡 {f}</span>' for f in s["filters"]])
+            html += f"""
+                <div class="info-row">
+                    <div class="info-label">过滤条件</div>
+                    <div class="info-value">{filter_tags}</div>
+                </div>"""
+        html += f"""
                 <div class="info-row">
                     <div class="info-label">策略说明</div>
                     <div class="info-value">{s["description"]}</div>
