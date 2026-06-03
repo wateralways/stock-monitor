@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>实时策略监控 - 2026-03-19 05:28:09</title>
+    <title>实时策略监控</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
             min-height: 100vh;
             padding-bottom: 30px;
         }
@@ -17,31 +17,78 @@
             backdrop-filter: blur(10px);
             padding: 20px;
             text-align: center;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
             position: sticky;
             top: 0;
             z-index: 100;
         }
-        .header h1 { font-size: 24px; color: #333; margin-bottom: 5px; }
+        .header h1 { font-size: 24px; color: #1a1a2e; margin-bottom: 5px; }
         .header .time { font-size: 14px; color: #888; }
-        .container { max-width: 600px; margin: 0 auto; padding: 15px; }
+        .container { max-width: 680px; margin: 0 auto; padding: 15px; }
+
+        /* Stats Card */
         .stats-card {
             background: white;
             border-radius: 20px;
             padding: 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 15px;
             text-align: center;
         }
+        .stat-item { padding: 10px; }
+        .stat-value { font-size: 32px; font-weight: bold; color: #333; }
+        .stat-value.buy { color: #e74c3c; }
+        .stat-label { font-size: 13px; color: #888; margin-top: 5px; }
+
+        /* Market Overview */
+        .market-card {
+            background: white;
+            border-radius: 20px;
+            padding: 18px 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .market-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .market-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            text-align: center;
+        }
+        .market-item { padding: 8px; }
+        .market-index { font-size: 13px; color: #888; margin-bottom: 4px; }
+        .market-price { font-size: 16px; font-weight: 700; color: #333; }
+        .market-chg { font-size: 13px; font-weight: 600; margin-top: 2px; }
+        .market-chg.up { color: #e74c3c; }
+        .market-chg.down { color: #27ae60; }
+        .market-trend {
+            grid-column: 1 / -1;
+            text-align: left;
+            font-size: 12px;
+            color: #666;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-top: 5px;
+        }
+
+        /* Filter Rules */
         .filter-rules {
             background: white;
             border-radius: 16px;
             padding: 18px;
-            margin-bottom: 20px;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+            margin-bottom: 15px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
         }
         .filter-title {
             font-size: 14px;
@@ -51,11 +98,7 @@
             padding-bottom: 8px;
             border-bottom: 1px solid #f0f0f0;
         }
-        .filter-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+        .filter-grid { display: flex; flex-direction: column; gap: 8px; }
         .filter-item {
             display: flex;
             align-items: flex-start;
@@ -64,39 +107,52 @@
             color: #666;
             line-height: 1.5;
         }
-        .filter-icon {
-            flex-shrink: 0;
-            font-size: 14px;
-        }
-        .stat-item { padding: 10px; }
-        .stat-value { font-size: 32px; font-weight: bold; color: #333; }
-        .stat-value.buy { color: #e74c3c; }
-        .stat-label { font-size: 13px; color: #888; margin-top: 5px; }
+        .filter-icon { flex-shrink: 0; font-size: 14px; }
+
+        /* Strategy Cards */
         .strategy-card {
             background: white;
             border-radius: 20px;
             margin-bottom: 15px;
             overflow: hidden;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }
         .strategy-header {
-            padding: 18px 20px;
+            padding: 16px 20px;
             color: white;
             display: flex;
             justify-content: space-between;
             align-items: center;
             cursor: pointer;
         }
-        .strategy-title { display: flex; align-items: center; gap: 10px; }
+        .strategy-title { display: flex; flex-direction: column; gap: 4px; }
+        .strategy-name-line { display: flex; align-items: center; gap: 10px; }
         .strategy-name { font-size: 16px; font-weight: 600; }
+        .strategy-cond {
+            font-size: 11px;
+            opacity: 0.85;
+            padding-left: 2px;
+        }
         .strategy-badge {
             background: rgba(255,255,255,0.3);
             padding: 5px 12px;
             border-radius: 20px;
             font-size: 14px;
             font-weight: 600;
+            white-space: nowrap;
         }
         .strategy-content { padding: 15px 20px; }
+        .strategy-type-tag {
+            display: inline-block;
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 6px;
+            font-weight: 600;
+        }
+        .tag-mr { background: #ffe0e0; color: #c0392b; }
+        .tag-tb { background: #e0f0ff; color: #2980b9; }
+
         .stock-item {
             padding: 15px 0;
             border-bottom: 1px solid #f0f0f0;
@@ -125,6 +181,12 @@
             background: #f8f9fa;
             border-radius: 8px;
         }
+        .stock-filters {
+            font-size: 11px;
+            color: #999;
+            margin-top: 3px;
+        }
+        .stock-filters .blocked { color: #e74c3c; font-weight: 600; }
         .buy-badge {
             background: linear-gradient(135deg, #e74c3c, #c0392b);
             color: white;
@@ -138,13 +200,15 @@
         .price-change { font-size: 14px; font-weight: 600; margin-top: 3px; }
         .price-change.up { color: #e74c3c; }
         .price-change.down { color: #27ae60; }
+
+        /* Recommendation */
         .recommendation-section {
             background: linear-gradient(135deg, #e74c3c, #c0392b);
             border-radius: 20px;
             padding: 30px;
             margin-bottom: 20px;
             color: white;
-            box-shadow: 0 10px 40px rgba(231, 76, 60, 0.3);
+            box-shadow: 0 10px 40px rgba(231, 76, 60, 0.4);
         }
         .rec-title {
             font-size: 26px;
@@ -176,361 +240,444 @@
         .rec-timing { font-size: 16px; opacity: 0.9; }
         .no-signal { text-align: center; padding: 40px; font-size: 22px; opacity: 0.9; font-weight: 600; }
         .empty-state { text-align: center; padding: 40px 20px; color: #999; }
-        .footer { text-align: center; padding: 30px 20px; color: rgba(255,255,255,0.7); font-size: 13px; }
+
+        /* Strategy Reference */
+        .strategy-reference {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .ref-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .ref-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .ref-table th {
+            background: #f8f9fa;
+            padding: 10px 8px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .ref-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #f0f0f0;
+            color: #555;
+            vertical-align: top;
+        }
+        .ref-table tr:hover { background: #fafbfc; }
+        .ref-table .strat-name { font-weight: 600; color: #333; white-space: nowrap; }
+        .ref-table .filter-list { font-size: 11px; color: #888; }
+
+        .footer { text-align: center; padding: 30px 20px; color: rgba(255,255,255,0.6); font-size: 13px; }
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
         .pulse { animation: pulse 2s infinite; }
+
+        /* Section Tabs */
+        .tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 0;
+            border-radius: 16px 16px 0 0;
+            overflow: hidden;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: rgba(255,255,255,0.5);
+            color: #666;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-btn.active {
+            background: white;
+            color: #333;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>实时策略监控</h1>
-        <div class="time">2026-03-19 05:28:09</div>
+        <div class="time">--</div>
     </div>
-    
+
     <div class="container">
+        <!-- ====== 大盘概况 ====== -->
+        <div class="market-card">
+            <div class="market-title">大盘概况</div>
+            <div class="market-grid">
+                <div class="market-item">
+                    <div class="market-index">上证指数</div>
+                    <div class="market-price">--</div>
+                    <div class="market-chg">--</div>
+                </div>
+                <div class="market-item">
+                    <div class="market-index">深证成指</div>
+                    <div class="market-price">--</div>
+                    <div class="market-chg">--</div>
+                </div>
+                <div class="market-item">
+                    <div class="market-index">创业板指</div>
+                    <div class="market-price">--</div>
+                    <div class="market-chg">--</div>
+                </div>
+                <div class="market-item">
+                    <div class="market-index">科创50</div>
+                    <div class="market-price">--</div>
+                    <div class="market-chg">--</div>
+                </div>
+                <div class="market-trend">
+                    趋势: -- | 风险等级: -- | 均线: MA20(--) MA60(--) | 5日涨幅: -- |
+                    建议仓位: -- | 策略倾向: --
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== 统计卡片 ====== -->
         <div class="stats-card">
             <div class="stat-item">
-                <div class="stat-value">16</div>
+                <div class="stat-value">--</div>
                 <div class="stat-label">分析股票</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value buy">1</div>
+                <div class="stat-value buy">--</div>
                 <div class="stat-label">买入信号</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value">6.2%</div>
+                <div class="stat-value">--</div>
                 <div class="stat-label">信号比例</div>
             </div>
         </div>
 
+        <!-- ====== 过滤规则 ====== -->
         <div class="filter-rules">
-            <div class="filter-title">过滤规则 (2026-06更新)</div>
+            <div class="filter-title">过滤规则</div>
             <div class="filter-grid">
                 <div class="filter-item">
                     <span class="filter-icon">💰</span>
-                    <span class="filter-text">主力资金流向: 当日主力净流入>0 或 3日累计>0 或 流出衰减 (S1/S2/S4/S6/S7/S8)</span>
+                    <span class="filter-text"><b>主力资金流向(方案U)</b>: 当日主力净流入>0 或 近3日累计>0 或 流出衰减 — S1/S2/S4/S6/S7/S8</span>
                 </div>
                 <div class="filter-item">
                     <span class="filter-icon">📉</span>
-                    <span class="filter-text">MA20斜率: MA20斜率>-1% 避免下降趋势接飞刀 (S1/S8)</span>
+                    <span class="filter-text"><b>MA20下降趋势</b>: MA20斜率<-1%禁止买入，避免下降趋势接飞刀 — S1/S8</span>
                 </div>
                 <div class="filter-item">
                     <span class="filter-icon">📊</span>
-                    <span class="filter-text">缩量确认: 下跌缩量(量比<1.1) 避免恐慌抛售 (S6/S7/S8)</span>
+                    <span class="filter-text"><b>缩量下跌确认</b>: 下跌中量比>1.1(放量抛售)禁止买入 — S6/S7/S8</span>
                 </div>
                 <div class="filter-item">
                     <span class="filter-icon">🔍</span>
-                    <span class="filter-text">MFI+收盘位置: 收盘在上半区或MFI回升 避免尾盘跳水 (S6/S7/S8)</span>
+                    <span class="filter-text"><b>MFI+收盘位置</b>: 收盘在当日下半区且MFI未回升则禁止买入 — S6/S7/S8</span>
                 </div>
             </div>
         </div>
-        
-        
+
+        <!-- ====== 买入推荐 ====== -->
         <div class="recommendation-section">
-            <div class="rec-title">[买入推荐]</div>
-            
-                <div class="rec-item">
-                    <div class="rec-header">
-                        <span class="rec-stock">ST炼石</span>
-                        <span class="rec-rate">胜率 61.9%</span>
-                    </div>
-                    <div class="rec-strategy">MA支撑+KDJ超卖 · ¥9.88</div>
-                    <div class="rec-timing">⏰ T+1开盘 / T+6开盘</div>
-                </div>
+            <div class="rec-title">买入推荐</div>
+            <div class="no-signal">今日无买入信号</div>
         </div>
-        
+
+        <!-- ====== 策略卡片: 均值回归类 ====== -->
         <div class="strategy-card">
             <div class="strategy-header" style="background: #3498DB" onclick="toggleStrategy(this)">
                 <div class="strategy-title">
-                    <span class="strategy-icon "></span>
-                    <span class="strategy-name">策略1: RSI+布林带均值回归</span>
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S1: RSI+布林带均值回归</span>
+                        <span class="strategy-type-tag tag-mr">博反弹</span>
+                    </div>
+                    <div class="strategy-cond">条件: (RSI<阈值 或 BB位置<阈值) + 当日涨 + 收阳 | 过滤: 主力资金流向 + MA20斜率</div>
                 </div>
                 <span class="strategy-badge">0/3</span>
             </div>
             <div class="strategy-content active">
-                
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            爱乐达
-                            
-                        </div>
-                        <div class="stock-code">300696.SZ</div>
-                        <div class="stock-detail">RSI=29.0, BB位置=0.222</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥29.60</div>
-                        <div class="price-change down">-1.79%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            ST炼石
-                            
-                        </div>
-                        <div class="stock-code">000697.SZ</div>
-                        <div class="stock-detail">RSI=61.0, BB位置=0.514</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥9.88</div>
-                        <div class="price-change down">-2.47%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            高澜股份
-                            
-                        </div>
-                        <div class="stock-code">300499.SZ</div>
-                        <div class="stock-detail">RSI=54.8, BB位置=0.720</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥40.40</div>
-                        <div class="price-change down">-2.42%</div>
-                    </div>
-                </div>
+                <div class="empty-state">--</div>
             </div>
         </div>
+
         <div class="strategy-card">
             <div class="strategy-header" style="background: #9B59B6" onclick="toggleStrategy(this)">
                 <div class="strategy-title">
-                    <span class="strategy-icon pulse"></span>
-                    <span class="strategy-name">策略2: MA支撑+KDJ超卖</span>
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S2: MA支撑+KDJ超卖</span>
+                        <span class="strategy-type-tag tag-mr">博反弹</span>
+                    </div>
+                    <div class="strategy-cond">条件: 3天前触发(MA20支撑 或 KDJ超卖) + 3日未涨超2% | 过滤: 主力资金流向 | 延迟入场: 3天</div>
                 </div>
-                <span class="strategy-badge">1/1</span>
+                <span class="strategy-badge">0/1</span>
             </div>
             <div class="strategy-content active">
-                
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name buy">
-                            ST炼石
-                            <span class="buy-badge">买入</span>
-                        </div>
-                        <div class="stock-code">000697.SZ</div>
-                        <div class="stock-detail">MA20=9.90, J值=-14.91</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥9.88</div>
-                        <div class="price-change down">-2.47%</div>
-                    </div>
-                </div>
+                <div class="empty-state">--</div>
             </div>
         </div>
+
         <div class="strategy-card">
             <div class="strategy-header" style="background: #E67E22" onclick="toggleStrategy(this)">
                 <div class="strategy-title">
-                    <span class="strategy-icon "></span>
-                    <span class="strategy-name">策略3: 多因子买入策略</span>
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S3: 多因子买入策略</span>
+                        <span class="strategy-type-tag tag-tb">趋势突破</span>
+                    </div>
+                    <div class="strategy-cond">条件: 量价齐升/动量/突破多因子共振 | 过滤: 大盘趋势 + 个股MA60</div>
+                </div>
+                <span class="strategy-badge">0/1</span>
+            </div>
+            <div class="strategy-content active">
+                <div class="empty-state">--</div>
+            </div>
+        </div>
+
+        <div class="strategy-card">
+            <div class="strategy-header" style="background: #27AE60" onclick="toggleStrategy(this)">
+                <div class="strategy-title">
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S4: RSI+连跌中等信号</span>
+                        <span class="strategy-type-tag tag-mr">博反弹</span>
+                    </div>
+                    <div class="strategy-cond">条件: RSI<阈值(自适应/固定35) + 连跌>=2天 | 过滤: 主力资金流向 + 个股趋势</div>
+                </div>
+                <span class="strategy-badge">0/9</span>
+            </div>
+            <div class="strategy-content active">
+                <div class="empty-state">--</div>
+            </div>
+        </div>
+
+        <div class="strategy-card">
+            <div class="strategy-header" style="background: #E74C3C" onclick="toggleStrategy(this)">
+                <div class="strategy-title">
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S5: 动量策略</span>
+                        <span class="strategy-type-tag tag-tb">趋势突破</span>
+                    </div>
+                    <div class="strategy-cond">条件: 量价共振/动量延续/超跌反弹/突破/MACD金叉 多信号 | 过滤: 趋势 + 超热</div>
                 </div>
                 <span class="strategy-badge">0/2</span>
             </div>
             <div class="strategy-content active">
-                
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            高澜股份
-                            
-                        </div>
-                        <div class="stock-code">300499.SZ</div>
-                        <div class="stock-detail">量比=0.73, RSI=52.8</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥40.40</div>
-                        <div class="price-change down">-2.42%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            英维克
-                            
-                        </div>
-                        <div class="stock-code">002837.SZ</div>
-                        <div class="stock-detail">量比=0.58, RSI=45.1</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥104.31</div>
-                        <div class="price-change down">-2.22%</div>
-                    </div>
-                </div>
+                <div class="empty-state">--</div>
             </div>
         </div>
+
         <div class="strategy-card">
-            <div class="strategy-header" style="background: #27AE60" onclick="toggleStrategy(this)">
+            <div class="strategy-header" style="background: #2ECC71" onclick="toggleStrategy(this)">
                 <div class="strategy-title">
-                    <span class="strategy-icon "></span>
-                    <span class="strategy-name">策略4: RSI+连跌中等信号</span>
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S6: 多因子评分超卖</span>
+                        <span class="strategy-type-tag tag-mr">博反弹</span>
+                    </div>
+                    <div class="strategy-cond">条件: RSI+BB+KDJ+连跌+5日跌幅 综合评分>=50 | 过滤: 主力资金流向 + 缩量 + MFI</div>
                 </div>
-                <span class="strategy-badge">0/7</span>
+                <span class="strategy-badge">0/2</span>
             </div>
             <div class="strategy-content active">
-                
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            裕同科技
-                            
-                        </div>
-                        <div class="stock-code">002831.SZ</div>
-                        <div class="stock-detail">RSI=61.5(不满足), 连跌=1天(不满足)</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥35.84</div>
-                        <div class="price-change down">-5.88%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            扬农化工
-                            
-                        </div>
-                        <div class="stock-code">600486.SH</div>
-                        <div class="stock-detail">RSI=39.6(不满足), 连跌=1天(不满足)</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥73.12</div>
-                        <div class="price-change down">-5.41%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            华测导航
-                            
-                        </div>
-                        <div class="stock-code">300627.SZ</div>
-                        <div class="stock-detail">RSI=29.1(满足), 连跌=1天(不满足)</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥33.94</div>
-                        <div class="price-change down">-1.94%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            川润股份
-                            
-                        </div>
-                        <div class="stock-code">002272.SZ</div>
-                        <div class="stock-detail">RSI=44.1(不满足), 连跌=1天(不满足)</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥18.06</div>
-                        <div class="price-change down">-3.42%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            英维克
-                            
-                        </div>
-                        <div class="stock-code">002837.SZ</div>
-                        <div class="stock-detail">RSI=45.0(不满足), 连跌=1天(不满足)</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥104.25</div>
-                        <div class="price-change down">-2.28%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            ST炼石
-                            
-                        </div>
-                        <div class="stock-code">000697.SZ</div>
-                        <div class="stock-detail">RSI=55.1(不满足), 连跌=5天(满足)</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥9.88</div>
-                        <div class="price-change down">-2.47%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            高澜股份
-                            
-                        </div>
-                        <div class="stock-code">300499.SZ</div>
-                        <div class="stock-detail">RSI=52.8(不满足), 连跌=1天(不满足)</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥40.39</div>
-                        <div class="price-change down">-2.44%</div>
-                    </div>
-                </div>
+                <div class="empty-state">--</div>
             </div>
         </div>
+
         <div class="strategy-card">
-            <div class="strategy-header" style="background: #E74C3C" onclick="toggleStrategy(this)">
+            <div class="strategy-header" style="background: #F39C12" onclick="toggleStrategy(this)">
                 <div class="strategy-title">
-                    <span class="strategy-icon "></span>
-                    <span class="strategy-name">策略5: 动量策略</span>
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S7: KDJ超卖反弹</span>
+                        <span class="strategy-type-tag tag-mr">博反弹</span>
+                    </div>
+                    <div class="strategy-cond">条件: J值<10 + 当日上涨 | 过滤: 主力资金流向 + 缩量 + MFI + 个股均线</div>
                 </div>
-                <span class="strategy-badge">0/3</span>
+                <span class="strategy-badge">0/1</span>
             </div>
             <div class="strategy-content active">
-                
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            川润股份
-                            
-                        </div>
-                        <div class="stock-code">002272.SZ</div>
-                        <div class="stock-detail">量比=0.52, RSI(6)=25.7</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥18.07</div>
-                        <div class="price-change down">-3.37%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            英维克
-                            
-                        </div>
-                        <div class="stock-code">002837.SZ</div>
-                        <div class="stock-detail">量比=0.60, RSI(6)=59.0</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥104.25</div>
-                        <div class="price-change down">-2.28%</div>
-                    </div>
-                </div>
-                <div class="stock-item">
-                    <div class="stock-info">
-                        <div class="stock-name ">
-                            爱乐达
-                            
-                        </div>
-                        <div class="stock-code">300696.SZ</div>
-                        <div class="stock-detail">量比=0.37, RSI(6)=40.5</div>
-                    </div>
-                    <div class="stock-price">
-                        <div class="price-value">¥29.60</div>
-                        <div class="price-change down">-1.79%</div>
-                    </div>
-                </div>
+                <div class="empty-state">--</div>
             </div>
         </div>
-        
+
+        <div class="strategy-card">
+            <div class="strategy-header" style="background: #C0392B" onclick="toggleStrategy(this)">
+                <div class="strategy-title">
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S8: 深跌反弹</span>
+                        <span class="strategy-type-tag tag-mr">博反弹</span>
+                    </div>
+                    <div class="strategy-cond">A: 5日跌>5%+RSI<40+涨 | B: 5日跌>10% | 过滤: 主力资金流向 + MA20斜率 + 缩量 + MFI</div>
+                </div>
+                <span class="strategy-badge">0/6</span>
+            </div>
+            <div class="strategy-content active">
+                <div class="empty-state">--</div>
+            </div>
+        </div>
+
+        <div class="strategy-card">
+            <div class="strategy-header" style="background: #1ABC9C" onclick="toggleStrategy(this)">
+                <div class="strategy-title">
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S9: 底部抬高+温和放量</span>
+                        <span class="strategy-type-tag tag-tb">趋势突破</span>
+                    </div>
+                    <div class="strategy-cond">条件: 底部抬高 + 量能温和放大 + RSI确认 + 收阳 | 过滤: 大盘风险 + 主力资金流向</div>
+                </div>
+                <span class="strategy-badge">0/6</span>
+            </div>
+            <div class="strategy-content active">
+                <div class="empty-state">--</div>
+            </div>
+        </div>
+
+        <div class="strategy-card">
+            <div class="strategy-header" style="background: #8E44AD" onclick="toggleStrategy(this)">
+                <div class="strategy-title">
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S10: N字突破</span>
+                        <span class="strategy-type-tag tag-tb">趋势突破</span>
+                    </div>
+                    <div class="strategy-cond">条件: A→B上涨>=5% + B→C回调25~70% + 今日突破B高 + 收阳 + 放量</div>
+                </div>
+                <span class="strategy-badge">0/2</span>
+            </div>
+            <div class="strategy-content active">
+                <div class="empty-state">--</div>
+            </div>
+        </div>
+
+        <div class="strategy-card">
+            <div class="strategy-header" style="background: #D35400" onclick="toggleStrategy(this)">
+                <div class="strategy-title">
+                    <div class="strategy-name-line">
+                        <span class="strategy-name">S11: 缩量涨信号触发</span>
+                        <span class="strategy-type-tag tag-tb">趋势突破</span>
+                    </div>
+                    <div class="strategy-cond">条件: 量比<0.8 + 涨>1% + MA20上方 | 川润专用</div>
+                </div>
+                <span class="strategy-badge">0/1</span>
+            </div>
+            <div class="strategy-content active">
+                <div class="empty-state">--</div>
+            </div>
+        </div>
+
+        <!-- ====== 策略说明文档 ====== -->
+        <div class="strategy-reference">
+            <div class="ref-title">策略说明文档</div>
+            <div style="font-size: 12px; color: #888; margin-bottom: 15px; text-align: center;">
+                共11个策略 | 🔴博反弹(均值回归) <span class="strategy-type-tag tag-mr">博反弹</span> 6个 | 🔵趋势突破 <span class="strategy-type-tag tag-tb">趋势突破</span> 5个
+            </div>
+            <div style="overflow-x: auto;">
+            <table class="ref-table">
+                <thead>
+                    <tr>
+                        <th>策略</th>
+                        <th>类型</th>
+                        <th>买入条件</th>
+                        <th>适用股票</th>
+                        <th>过滤层</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="strat-name">S1 RSI+布林带</td>
+                        <td><span class="strategy-type-tag tag-mr">博反弹</span></td>
+                        <td>(RSI<自适应阈值 或 BB位置<阈值) + 当日涨 + 收阳</td>
+                        <td>爱乐达、ST炼石、华夏航空</td>
+                        <td class="filter-list">主力流向 + MA20斜率</td>
+                    </tr>
+                    <tr>
+                        <td class="strat-name">S2 MA支撑+KDJ</td>
+                        <td><span class="strategy-type-tag tag-mr">博反弹</span></td>
+                        <td>3天前(MA20支撑或KDJ超卖)触发 + 3日未涨超2% → 延迟入场</td>
+                        <td>ST炼石</td>
+                        <td class="filter-list">主力流向 + 大盘风险</td>
+                    </tr>
+                    <tr>
+                        <td class="strat-name">S3 多因子买入</td>
+                        <td><span class="strategy-type-tag tag-tb">趋势突破</span></td>
+                        <td>VPP量价齐升/动量延续/突破/MACD 多因子共振</td>
+                        <td>高澜股份</td>
+                        <td class="filter-list">大盘趋势 + 个股MA60</td>
+                    </tr>
+                    <tr>
+                        <td class="strat-name">S4 RSI+连跌</td>
+                        <td><span class="strategy-type-tag tag-mr">博反弹</span></td>
+                        <td>RSI<=阈值(自适应/35固定) + 连跌>=2天</td>
+                        <td>裕同科技、扬农化工、华测导航、川润股份、ST炼石、高澜股份、拓日新能、佳力图、东方电子</td>
+                        <td class="filter-list">主力流向 + 个股趋势</td>
+                    </tr>
+                    <tr>
+                        <td class="strat-name">S5 动量策略</td>
+                        <td><span class="strategy-type-tag tag-tb">趋势突破</span></td>
+                        <td>量价共振/动量延续/超跌反弹/突破/MACD金叉 任一触发</td>
+                        <td>川润股份、爱乐达</td>
+                        <td class="filter-list">趋势过滤 + 超热过滤</td>
+                    </tr>
+                    <tr>
+                        <td class="strat-name">S6 评分超卖</td>
+                        <td><span class="strategy-type-tag tag-mr">博反弹</span></td>
+                        <td>RSI(25分)+BB(20分)+KDJ(15分)+连跌(15分)+5日跌幅(10分)+大盘(5分)+下影线(5分)+缩量扣分 综合>=50</td>
+                        <td>拓日新能、安车检测</td>
+                        <td class="filter-list">主力流向 + 缩量 + MFI</td>
+                    </tr>
+                    <tr>
+                        <td class="strat-name">S7 KDJ超卖反弹</td>
+                        <td><span class="strategy-type-tag tag-mr">博反弹</span></td>
+                        <td>J值<10 + 当日上涨</td>
+                        <td>英维克</td>
+                        <td class="filter-list">主力流向 + 缩量 + MFI + MA60</td>
+                    </tr>
+                    <tr>
+                        <td class="strat-name">S8 深跌反弹</td>
+                        <td><span class="strategy-type-tag tag-mr">博反弹</span></td>
+                        <td>A: 5日跌>5%+RSI<40+涨 | B: 5日跌>10%(特定股票)</td>
+                        <td>高澜股份、川润股份、江淮汽车、爱乐达、安车检测、晶科能源</td>
+                        <td class="filter-list">主力流向 + MA20斜率 + 缩量 + MFI + 个股趋势</td>
+                    </tr>
+                    <tr>
+                        <td class="strat-name">S9 底部抬高+放量</td>
+                        <td><span class="strategy-type-tag tag-tb">趋势突破</span></td>
+                        <td>底部抬高(低点逐升) + 量能温和放大 + RSI确认 + 收阳</td>
+                        <td>川润股份、裕同科技、拓日新能、ST炼石、华夏航空、佳力图</td>
+                        <td class="filter-list">大盘风险 + 主力流向</td>
+                    </tr>
+                    <tr>
+                        <td class="strat-name">S10 N字突破</td>
+                        <td><span class="strategy-type-tag tag-tb">趋势突破</span></td>
+                        <td>A→B涨>=5% + B→C回调25~70% + 今日突破B高 + 收阳 + 放量>=1.0</td>
+                        <td>华测导航、高澜股份</td>
+                        <td class="filter-list">趋势确认 + 量能确认</td>
+                    </tr>
+                    <tr>
+                        <td class="strat-name">S11 缩量涨触发</td>
+                        <td><span class="strategy-type-tag tag-tb">趋势突破</span></td>
+                        <td>量比<0.8(缩量) + 涨幅>1% + 价格>MA20</td>
+                        <td>川润股份</td>
+                        <td class="filter-list">量价确认</td>
+                    </tr>
+                </tbody>
+            </table>
+            </div>
+        </div>
+
         <div class="footer">
-            <div>过滤规则: 主力资金流向(方案U) + MA20斜率(S1/S8) + 缩量确认(S6/S7/S8) + MFI收盘位置(S6/S7/S8)</div>
-            <div style="margin-top: 8px;">建议持仓周期: T+5 (5个交易日)</div>
+            <div>过滤体系: 主力资金流向(方案U v2) + MA20斜率(S1/S8) + 缩量确认(S6/S7/S8) + MFI收盘位置(S6/S7/S8)</div>
+            <div style="margin-top: 8px;">建议持仓: T+5 | 回测期间: 2026年5-6月 | 过滤后减亏效果: S4(-59%→-15%) S8(-155%→-39%)</div>
             <div style="margin-top: 8px; opacity: 0.7;">⚠️ 投资有风险，策略仅供参考</div>
         </div>
     </div>
-    
+
     <script>
         function toggleStrategy(header) {
             const content = header.nextElementSibling;

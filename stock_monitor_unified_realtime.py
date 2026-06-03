@@ -1993,14 +1993,11 @@ class Strategy9_HigherLowVolume:
 
 
 class Strategy10_NBreakout:
-    """N字突破: 回调后再次突破前高, 趋势延续的加速信号
-    【警告】该策略在震荡市中假突破极多，历史胜率低(高澜47.6%, 华测62.5%)，建议谨慎使用
-    """
+    """N字突破: 回调后再次突破前高, 趋势延续的加速信号"""
     NAME = "N字突破"
     STOCKS = [
-        # 高澜N字突破胜率仅47.6%，暂停使用
-        # {"code": "300627.SZ", "name": "华测导航", "sina_code": "sz300627"},
-        # {"code": "300499.SZ", "name": "高澜股份", "sina_code": "sz300499"},
+        {"code": "300627.SZ", "name": "华测导航", "sina_code": "sz300627"},
+        {"code": "300499.SZ", "name": "高澜股份", "sina_code": "sz300499"},
     ]
 
     @classmethod
@@ -2066,13 +2063,10 @@ class Strategy10_NBreakout:
 
 
 class Strategy11_ShrinkVolumeRise:
-    """川润专用-缩量涨信号触发: 量比<0.8 + 涨>1% + MA20以上
-    【警告】该策略历史胜率仅52.6%，在震荡市中容易诱多后补跌，建议谨慎使用
-    """
+    """川润专用-缩量涨信号触发: 量比<0.8 + 涨>1% + MA20以上"""
     NAME = "缩量涨信号触发"
     STOCKS = [
-        # 川润缩量涨策略胜率低，暂停使用
-        # {"code": "002272.SZ", "name": "川润股份", "sina_code": "sz002272"},
+        {"code": "002272.SZ", "name": "川润股份", "sina_code": "sz002272"},
     ]
 
     @classmethod
@@ -2499,17 +2493,6 @@ def print_market_env(me: Dict):
 
 def print_strategy_results(strategy_name: str, results: List[Dict], market_env: Optional[Dict] = None):
     if not results:
-        # 对暂停的策略给出说明
-        if strategy_name == Strategy10_NBreakout.NAME:
-            print(f"\n{'='*100}")
-            print(f"【{strategy_name}】[已暂停]")
-            print(f"  原因: 该策略在震荡市中假突破极多，高澜历史胜率仅47.6%，华测62.5%")
-            print(f"  建议: 等待趋势明朗后恢复")
-        elif strategy_name == Strategy11_ShrinkVolumeRise.NAME:
-            print(f"\n{'='*100}")
-            print(f"【{strategy_name}】[已暂停]")
-            print(f"  原因: 川润缩量涨策略历史胜率仅52.6%，震荡市容易诱多后补跌")
-            print(f"  建议: 等待趋势明朗后恢复")
         return
     print(f"\n{'=' * 100}")
     print(f"【{strategy_name}】")
