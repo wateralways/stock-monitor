@@ -36,6 +36,38 @@
             gap: 15px;
             text-align: center;
         }
+        .filter-rules {
+            background: white;
+            border-radius: 16px;
+            padding: 18px;
+            margin-bottom: 20px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+        }
+        .filter-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .filter-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .filter-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            font-size: 12px;
+            color: #666;
+            line-height: 1.5;
+        }
+        .filter-icon {
+            flex-shrink: 0;
+            font-size: 14px;
+        }
         .stat-item { padding: 10px; }
         .stat-value { font-size: 32px; font-weight: bold; color: #333; }
         .stat-value.buy { color: #e74c3c; }
@@ -168,6 +200,28 @@
             <div class="stat-item">
                 <div class="stat-value">6.2%</div>
                 <div class="stat-label">信号比例</div>
+            </div>
+        </div>
+
+        <div class="filter-rules">
+            <div class="filter-title">过滤规则 (2026-06更新)</div>
+            <div class="filter-grid">
+                <div class="filter-item">
+                    <span class="filter-icon">💰</span>
+                    <span class="filter-text">主力资金流向: 当日主力净流入>0 或 3日累计>0 或 流出衰减 (S1/S2/S4/S6/S7/S8)</span>
+                </div>
+                <div class="filter-item">
+                    <span class="filter-icon">📉</span>
+                    <span class="filter-text">MA20斜率: MA20斜率>-1% 避免下降趋势接飞刀 (S1/S8)</span>
+                </div>
+                <div class="filter-item">
+                    <span class="filter-icon">📊</span>
+                    <span class="filter-text">缩量确认: 下跌缩量(量比<1.1) 避免恐慌抛售 (S6/S7/S8)</span>
+                </div>
+                <div class="filter-item">
+                    <span class="filter-icon">🔍</span>
+                    <span class="filter-text">MFI+收盘位置: 收盘在上半区或MFI回升 避免尾盘跳水 (S6/S7/S8)</span>
+                </div>
             </div>
         </div>
         
@@ -471,7 +525,8 @@
         </div>
         
         <div class="footer">
-            <div>建议持仓周期: T+5 (5个交易日)</div>
+            <div>过滤规则: 主力资金流向(方案U) + MA20斜率(S1/S8) + 缩量确认(S6/S7/S8) + MFI收盘位置(S6/S7/S8)</div>
+            <div style="margin-top: 8px;">建议持仓周期: T+5 (5个交易日)</div>
             <div style="margin-top: 8px; opacity: 0.7;">⚠️ 投资有风险，策略仅供参考</div>
         </div>
     </div>

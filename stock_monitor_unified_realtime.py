@@ -1806,6 +1806,19 @@ class Strategy8_DeepDrop:
             stock_downtrend = True
             buy_signal = False
 
+        # MA20斜率过滤: MA20处于下降趋势时(斜率<-1%)，深跌反弹失败率高
+        # 回测验证: S8信号密集(29笔)，叠加此过滤后从-155%减亏至-39%
+        ma20_downtrend = False
+        ma20_slope = 0.0
+        if buy_signal:
+            ma20_series = df["close"].rolling(20).mean()
+            ma20_now = ma20_series.iloc[-1]
+            ma20_5ago = ma20_series.iloc[-6] if len(ma20_series) > 5 else ma20_now
+            ma20_slope = (ma20_now - ma20_5ago) / ma20_5ago * 100 if ma20_5ago > 0 else 0
+            if ma20_slope < -1.0:
+                ma20_downtrend = True
+                buy_signal = False
+
         if me.get("pause_all"):
             buy_signal = False
 
@@ -1863,6 +1876,8 @@ class Strategy8_DeepDrop:
             "signals": signals,
             "buy_signal": buy_signal,
             "stock_downtrend": stock_downtrend,
+            "ma20_downtrend": ma20_downtrend,
+            "ma20_slope": round(ma20_slope, 2),
             "pause_reason": pause_reason,
             "vol_shrink_ratio": round(vol_shrink_ratio, 2) if vol_shrink_ratio is not None else None,
             "vol_expand_drop": vol_expand_drop,
@@ -2524,6 +2539,7 @@ def print_strategy_results(strategy_name: str, results: List[Dict], market_env: 
             r.get("pause_all")
             or r.get("pause_momentum")
             or r.get("stock_downtrend")
+            or r.get("ma20_downtrend")
             or r.get("pause_reason")
         )
         block_note = ""
@@ -2533,7 +2549,9 @@ def print_strategy_results(strategy_name: str, results: List[Dict], market_env: 
             elif r.get("pause_momentum"):
                 block_note = " [被动量暂停阻止]"
             elif r.get("stock_downtrend"):
-                block_note = " [被个股趋势阻止]"
+                block_note = " [被个股趋势阻止(price<MA60*0.95)]"
+            elif r.get("ma20_downtrend"):
+                block_note = f" [被MA20下降趋势阻止(斜率{r.get('ma20_slope',0):.1f}%)]"
             elif r.get("pause_reason"):
                 block_note = " [被策略过滤阻止]"
         print(
@@ -2666,6 +2684,8 @@ def print_strategy_results(strategy_name: str, results: List[Dict], market_env: 
                 filters.append(f"MFI={mfi_v}资金不足")
             if r.get("stock_downtrend"):
                 filters.append("个股下降趋势")
+            if r.get("ma20_downtrend"):
+                filters.append(f"MA20下降(斜率{r.get('ma20_slope',0):.1f}%)")
             if filters:
                 print(f"       [过滤] {'; '.join(filters)}")
             else:
